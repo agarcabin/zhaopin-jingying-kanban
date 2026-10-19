@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#f4f6f9" />
+    <meta name="description" content="招聘经营看板：查看团队招聘结果、人员业绩、面试进展与项目表现。" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>招聘经营看板</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#overview">跳到看板内容</a>
+
+    <div id="load-state" class="load-state" role="status" aria-live="polite">
+      <div class="load-mark" aria-hidden="true">
+        <span></span><span></span><span></span>
+      </div>
+      <strong>正在加载招聘看板</strong>
+      <span>整理团队结果与项目进展</span>
+    </div>
+
+    <div id="app-shell" hidden>
+      <header class="site-header">
+        <div class="header-inner">
+          <a class="brand" href="#overview" aria-label="招聘经营看板，返回总览">
+            <span class="brand-mark" aria-hidden="true">
+              <svg viewBox="0 0 32 32" fill="none">
+                <path d="M7 22V16M16 22V9M25 22V5" stroke="currentColor" stroke-width="4" stroke-linecap="round" />
+                <path d="M5 28H27" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity=".35" />
+              </svg>
+            </span>
+            <div class="brand-copy">
+              <div class="brand-title-row"><h1>招聘经营看板</h1><span class="trial-badge">试运行</span></div>
+              <span class="brand-subtitle">团队结果 · 人员贡献 · 项目进展</span>
+            </div>
+          </a>
+
+          <nav class="primary-nav" aria-label="看板导航">
+            <a class="nav-link is-active" href="#overview">
+              <svg viewBox="0 0 20 20" aria-hidden="true" fill="none"><rect x="3" y="3" width="5" height="5" rx="1.3" /><rect x="12" y="3" width="5" height="5" rx="1.3" /><rect x="3" y="12" width="5" height="5" rx="1.3" /><rect x="12" y="12" width="5" height="5" rx="1.3" /></svg>
+              <span>总览</span>
+            </a>
+            <a class="nav-link" href="#people">
+              <svg viewBox="0 0 20 20" aria-hidden="true" fill="none"><circle cx="8" cy="6" r="3" /><path d="M2.5 17v-1a5.5 5.5 0 0 1 11 0v1M14 3.5a3 3 0 0 1 0 5.5M17.5 17v-1a5.5 5.5 0 0 0-2.5-4.6" /></svg>
+              <span>人员</span>
+            </a>
+            <a class="nav-link" href="#projects">
+              <svg viewBox="0 0 20 20" aria-hidden="true" fill="none"><rect x="3" y="6" width="14" height="11" rx="2" /><path d="M7 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M3 10.5c4.5 2 9.5 2 14 0M9 11h2" /></svg>
+              <span>项目</span>
+            </a>
+          </nav>
+
+          <div class="header-meta">
+            <div class="live-label"><span class="live-dot" aria-hidden="true"></span>日报主口径</div>
+            <div id="meta-status" class="meta-status"></div>
+          </div>
+        </div>
+      </header>
+
+      <main class="dashboard-main">
+        <section class="date-panel" aria-label="统计日期筛选">
+          <div class="date-panel-top">
+            <div class="date-summary">
+              <span class="field-eyebrow">统计区间</span>
+              <div id="date-label" class="date-label" aria-live="polite"></div>
+            </div>
+            <div class="date-presets" role="group" aria-label="选择统计区间">
+              <button type="button" class="preset-button is-active" data-preset="latest" aria-pressed="true">最新日报</button>
+              <button type="button" class="preset-button" data-preset="week" aria-pressed="false">近7日</button>
+              <button type="button" class="preset-button" data-preset="month" aria-pressed="false">本月</button>
+              <button type="button" class="preset-button" data-preset="all" aria-pressed="false">全部</button>
+              <button type="button" class="preset-button" data-preset="custom" aria-pressed="false">自选日期</button>
+            </div>
+          </div>
+          <div id="custom-range" class="custom-range" hidden>
+            <label class="date-field" for="start-date"><span>开始日期</span><input type="date" id="start-date" /></label>
+            <span class="date-range-divider" aria-hidden="true">—</span>
+            <label class="date-field" for="end-date"><span>结束日期</span><input type="date" id="end-date" /></label>
+            <button type="button" id="apply-range" class="btn btn-primary">查看</button>
+            <p id="range-error" class="range-error" role="alert"></p>
+          </div>
+          <p id="coverage-note" class="coverage-note"></p>
+        </section>
+
+        <section id="overview" class="page-section overview-section" aria-labelledby="overview-title">
+          <div class="section-heading">
+            <div>
+              <div class="section-eyebrow"><span class="section-indicator" aria-hidden="true"></span>团队总览</div>
+              <h2 id="overview-title" class="section-title">招聘结果与推进</h2>
+              <p class="section-subtitle">先看交付结果，再看邀约与面试进展。</p>
+            </div>
+            <span class="section-helper">点击数字可查看构成</span>
+          </div>
+          <div id="kpi-grid" class="kpi-grid" aria-live="polite"></div>
+          <div id="process-strip" class="process-strip"></div>
+          <div id="coverage-alert" class="coverage-alert" aria-live="polite"></div>
+        </section>
+
+        <section id="people" class="page-section people-section" aria-labelledby="people-title">
+          <div class="section-heading">
+            <div>
+              <div class="section-eyebrow"><span class="section-indicator" aria-hidden="true"></span>人员业绩</div>
+              <h2 id="people-title" class="section-title">每个人的工作与结果</h2>
+              <p class="section-subtitle">结合负责项目，查看个人贡献与推进情况。</p>
+            </div>
+            <div class="section-actions">
+              <label class="select-field" for="sort-metric"><span class="sr-only">人员排序指标</span>
+                <select id="sort-metric">
+                  <option value="source">原人员顺序</option>
+                  <option value="hire">按核实入职排序</option>
+                  <option value="attended">按实际到面排序</option>
+                  <option value="communicated">按我沟通排序</option>
+                  <option value="resumes">按收到简历排序</option>
+                </select>
+              </label>
+              <button type="button" id="toggle-full" class="btn btn-quiet" aria-pressed="false">完整日报</button>
+            </div>
+          </div>
+          <div class="people-surface">
+            <div id="people-table" class="table-wrap"></div>
+            <div id="people-cards" class="people-cards"></div>
+            <div class="mobile-table-action"><button type="button" id="mobile-table-toggle" class="btn btn-quiet" aria-expanded="false" aria-controls="people-table">查看完整对比表<svg viewBox="0 0 16 16" aria-hidden="true" fill="none"><path d="m5 3 5 5-5 5" /></svg></button></div>
+            <p id="people-note" class="source-note people-note"></p>
+          </div>
+        </section>
+
+        <div class="analysis-grid">
+          <section class="surface analysis-panel" aria-labelledby="interview-title">
+            <div class="section-heading panel-heading">
+              <div>
+                <div class="section-eyebrow"><span class="section-indicator" aria-hidden="true"></span>面试进展</div>
+                <h2 id="interview-title" class="section-title">邀约后的状态</h2>
+                <p class="section-subtitle">同一登记批次，查看当前推进结果。</p>
+              </div>
+            </div>
+            <div id="interview-panel" class="interview-panel"></div>
+          </section>
+
+          <section class="surface analysis-panel trend-panel" aria-labelledby="trend-title">
+            <div class="section-heading panel-heading">
+              <div>
+                <div class="section-eyebrow"><span class="section-indicator" aria-hidden="true"></span>近期变化</div>
+                <h2 id="trend-title" class="section-title">工作与交付的连续性</h2>
+              </div>
+              <label class="select-field trend-select" for="trend-metric"><span class="sr-only">趋势指标</span>
+                <select id="trend-metric">
+                  <option value="hire">核实入职</option>
+                  <option value="communicated">我沟通</option>
+                  <option value="wecom">企微添加</option>
+                  <option value="resumes">收到简历</option>
+                  <option value="attended">实际到面</option>
+                </select>
+              </label>
+            </div>
+            <div id="trend-area" class="trend-area"></div>
+            <p id="trend-note" class="source-note trend-note"></p>
+          </section>
+        </div>
+
+        <section id="attention" class="attention-panel" aria-label="数据待补与口径提醒"></section>
+
+        <section id="projects" class="page-section projects-section" aria-labelledby="projects-title">
+          <div class="section-heading">
+            <div>
+              <div class="section-eyebrow"><span class="section-indicator" aria-hidden="true"></span>项目分析</div>
+              <h2 id="projects-title" class="section-title">投入在哪，进展到哪</h2>
+              <p class="section-subtitle">按客户汇总，点击查看参与人员与项目明细。</p>
+            </div>
+            <label class="select-field" for="project-sort"><span class="sr-only">项目排序指标</span>
+              <select id="project-sort">
+                <option value="name">按项目名称排序</option>
+                <option value="hire">按核实入职排序</option>
+                <option value="attended">按实际到面排序</option>
+                <option value="resumes">按收到简历排序</option>
+              </select>
+            </label>
+          </div>
+          <div id="project-list" class="project-list"></div>
+          <p class="source-note project-source-note">面试按登记日期统计，入职按入职日期统计；各项数据保留自己的统计口径。</p>
+        </section>
+
+        <footer class="page-footer">
+          <div id="source-footer" class="source-footer"></div>
+          <button type="button" id="open-methodology" class="btn btn-quiet methodology-button"><svg viewBox="0 0 18 18" aria-hidden="true" fill="none"><circle cx="9" cy="9" r="6.5" /><path d="M9 8v4M9 5.5v.1" /></svg>指标说明</button>
+        </footer>
+      </main>
+    </div>
+
+    <dialog id="detail-dialog" class="detail-dialog" aria-labelledby="detail-title" aria-describedby="detail-subtitle">
+      <div class="dialog-header">
+        <div class="dialog-title-group">
+          <div id="detail-kicker" class="detail-kicker"></div>
+          <h2 id="detail-title" class="detail-title"></h2>
+          <p id="detail-subtitle" class="detail-subtitle"></p>
+        </div>
+        <button type="button" id="close-detail" class="icon-button close-detail" aria-label="关闭详情"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none"><path d="m6 6 12 12M18 6 6 18" /></svg></button>
+      </div>
+      <div id="detail-body" class="detail-body"></div>
+    </dialog>
+
+    <noscript><div class="noscript-notice">请启用浏览器的 JavaScript，以查看招聘数据和切换统计日期。</div></noscript>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
