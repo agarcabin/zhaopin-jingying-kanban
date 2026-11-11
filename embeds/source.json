@@ -1,8 +1,8 @@
 {
   "source_name": "企业微信在线表格《创新招聘组数据》",
   "source_url": "https://doc.weixin.qq.com/sheet/e3_AQsA_wYCAFMCNYd3nGEL1QQ6zjpQz",
-  "snapshot_dir": "C:\\Users\\A1\\.workbuddy\\skills\\recruit-daily-pipeline\\outputs\\wecom_snapshot\\2026-11-11",
-  "snapshot_generated_at": "2026-11-11 20:03",
+  "snapshot": "outputs/wecom_snapshot/2026-11-11",
+  "snapshot_generated_at": "2026-11-11 20:19",
   "latest_report": "2026-11-10",
   "data_range": {
     "from": "2026-10-09",
@@ -22,5 +22,5 @@
   "chart_version": "5.5.0",
   "chart_sha256": "42f8329d989b6f6539dd2b15bbdf0d82025762ac112fbb60dc57b27d7bcf3946",
   "built_by": "recruit-daily-pipeline/scripts/build_workbench.py",
-  "built_at": "2026-11-11 20:03"
+  "built_at": "2026-11-11 20:19"
 }
