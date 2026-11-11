@@ -12,3 +12,7 @@ desktop.ini
 # 本地临时文件
 *.log
 *.tmp
+
+# 凭据（绝不提交）
+.env.local
+.env
