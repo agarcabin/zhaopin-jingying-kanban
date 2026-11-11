@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>看板嵌入 · 方案对照测试</title>
+<style>
+:root{font:15px/1.6 system-ui,"Microsoft YaHei",sans-serif;color:#172b43;background:#f4f6f9}*{box-sizing:border-box}body{margin:0;padding:24px}main{max-width:1600px;margin:auto}h1{font-size:25px;margin:8px 0}p{color:#53647a;margin:8px 0}a{color:#1762aa}nav{display:flex;gap:8px;flex-wrap:wrap;margin:20px 0}button{font:inherit;cursor:pointer;min-height:44px;border:1px solid #ced9e5;background:white;border-radius:8px;padding:9px 14px;color:#172b43}button[aria-pressed=true]{background:#1762aa;border-color:#1762aa;color:white}button:focus-visible,a:focus-visible{outline:3px solid #1762aa;outline-offset:3px}.panel{background:white;border:1px solid #dfe5ed;border-radius:10px;overflow:hidden}.bar{padding:12px 18px;border-bottom:1px solid #dfe5ed}#status{font-size:13px}iframe{display:block;border:0;width:100%;height:75vh;min-height:440px}#expected{font-weight:600;color:#172b43}.note{font-size:13px}code{overflow-wrap:anywhere}@media(max-width:600px){body{padding:14px}h1{font-size:22px}nav button{flex:1 1 140px}}
+</style>
+<main>
+  <a href="./index.html">← 返回综合工作台</a>
+  <h1>看板嵌入 · 方案对照测试</h1>
+  <p>对照检查同一份看板在不同加载方式下的显示和交互。页面加载事件不能代表嵌入成功。</p>
+  <nav aria-label="测试方案">
+    <button data-case="share" aria-pressed="false">1. 原始分享链接</button>
+    <button data-case="canonical" aria-pressed="false">2. 无参数标准链接</button>
+    <button data-case="direct" aria-pressed="false">3. 看板文件直达</button>
+    <button data-case="no-referrer" aria-pressed="false">4. 不发送来源信息</button>
+    <button data-case="copy" aria-pressed="false">5. 同站部署副本</button>
+  </nav>
+  <div class="panel">
+    <div class="bar"><p id="case-title"></p><p id="expected"></p><p class="note">地址：<code id="address"></code></p><p id="status" role="status"></p></div>
+    <div id="frame-host"></div>
+  </div>
+  <p class="note">同站副本的数据截至 2026-10-23，生成于 2026-10-24 16:55；候选人姓名按原始数据保留。副本不会自动跟随 WorkBuddy 更新。</p>
+</main>
+<script>
+const share = 'https://workbuddy.link/p/TLnwVZuv6cHmuRsWtXp5eK?ext2=copy_link';
+const direct = 'https://workbuddy-space-static.codebuddy.work/page/TLnwVZuv6cHmuRsWtXp5eK/5fVfS7kWFdKl/index.html';
+const cases = {
+  share: {title:'原始分享链接', url:share, note:'验证分享外壳与内部看板是否均可加载。'},
+  canonical: {title:'无参数标准链接', url:'https://www.workbuddy.link/p/TLnwVZuv6cHmuRsWtXp5eK', note:'排除链接跳转与分享参数的影响。'},
+  direct: {title:'看板文件直达', url:direct, note:'直接嵌入看板文件，排除分享外壳的影响。'},
+  'no-referrer': {title:'不发送来源信息', url:direct, note:'对照测试不发送 Referer 的情况；frame-ancestors 仍由浏览器正常检查。', referrerPolicy:'no-referrer'},
+  copy: {title:'同站部署副本', url:'./embeds/dashboard.html', note:'验证独立部署副本的漏斗、日期筛选、表格和图表。'}
+};
+let timer;
+function showCase(){
+  const key = cases[location.hash.slice(1)] ? location.hash.slice(1) : 'copy';
+  const chosen = cases[key];
+  document.querySelectorAll('[data-case]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.case===key)));
+  document.getElementById('case-title').textContent=chosen.title;
+  document.getElementById('expected').textContent=chosen.note;
+  document.getElementById('address').textContent=new URL(chosen.url,location.href).href;
+  const status=document.getElementById('status');
+  status.textContent='加载中…';
+  clearTimeout(timer);
+  const frame=document.createElement('iframe');
+  frame.title=chosen.title;
+  frame.referrerPolicy=chosen.referrerPolicy || 'strict-origin-when-cross-origin';
+  frame.addEventListener('load',()=>{clearTimeout(timer);status.textContent='已收到加载事件；请检查实际内容，并操作日期筛选确认。';});
+  frame.src=chosen.url;
+  document.getElementById('frame-host').replaceChildren(frame);
+  timer=setTimeout(()=>{status.textContent='加载较慢，请检查实际内容。';},18000);
+}
+document.querySelectorAll('[data-case]').forEach(b=>b.addEventListener('click',()=>{location.hash=b.dataset.case;}));
+addEventListener('hashchange',showCase);showCase();
+</script>
+</html>

@@ -1,205 +1,107 @@
 <!doctype html>
 <html lang="zh-CN">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#f4f6f9" />
-    <meta name="description" content="招聘经营看板：查看团队招聘结果、人员业绩、面试进展与项目表现。" />
-    <meta name="robots" content="noindex, nofollow" />
-    <title>招聘经营看板</title>
-    <link rel="stylesheet" href="./styles.css" />
-  </head>
-  <body>
-    <a class="skip-link" href="#overview">跳到看板内容</a>
-
-    <div id="load-state" class="load-state" role="status" aria-live="polite">
-      <div class="load-mark" aria-hidden="true">
-        <span></span><span></span><span></span>
-      </div>
-      <strong>正在加载招聘看板</strong>
-      <span>整理团队结果与项目进展</span>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>创新招聘组 · 综合工作台</title>
+  <link rel="stylesheet" href="./task-preview.css">
+  <script src="./task-preview.js" defer></script>
+  <link rel="stylesheet" href="./positions.css">
+  <script src="./positions.js" defer></script>
+  <style>
+    :root{--bg:#f4f6f9;--surface:#fff;--text:#172b43;--muted:#53647a;--line:#dfe5ed;--blue:#1762aa;--tint:#eaf3ff;--green:#087957}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.6 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
+    button,a{font:inherit}button{cursor:pointer}button:focus-visible,a:focus-visible{outline:3px solid var(--blue);outline-offset:4px}button,a{touch-action:manipulation}
+    header{background:var(--surface);border-bottom:1px solid var(--line);padding:0 32px}.top{max-width:1800px;margin:auto;display:flex;align-items:center;gap:32px;min-height:80px;flex-wrap:wrap}.brand{font-size:18px;font-weight:750;white-space:nowrap}.brand span{display:inline-grid;place-items:center;width:32px;height:32px;margin-right:10px;background:var(--blue);color:white;border-radius:8px;font-size:16px}
+    nav{display:flex;gap:8px;flex-wrap:wrap}nav button{border:0;background:transparent;color:var(--muted);border-radius:8px;padding:11px 19px;min-height:44px;font-weight:600}nav button:hover{background:var(--bg)}nav button[aria-pressed="true"]{background:var(--tint);color:var(--blue)}.prototype{margin-left:auto;font-size:12px;border:1px solid var(--line);padding:3px 10px;border-radius:20px;color:var(--muted)}
+    main{max-width:1864px;margin:0 auto;padding:24px 32px}.heading{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:18px}.eyebrow{font-size:12px;letter-spacing:2px;color:var(--muted);margin:0 0 4px}h1{font-size:24px;line-height:1.4;margin:0 0 4px}p{margin:0;color:var(--muted)}.actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.action{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:9px 15px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--text);text-decoration:none;white-space:nowrap}.action:hover{border-color:var(--blue);color:var(--blue)}
+    .viewer{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--surface)}.viewer-bar{padding:11px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;flex-wrap:wrap;color:var(--muted);font-size:13px}.dot{width:8px;height:8px;flex-shrink:0;border-radius:50%;background:var(--blue)}.source{margin-left:auto;color:var(--muted);text-decoration:none}.source:hover{text-decoration:underline}.frame-wrap{height:calc(100dvh - 310px);min-height:480px;position:relative}iframe{width:100%;height:100%;border:0;display:block;background:white}#placeholder{min-height:480px;display:grid;place-content:center;padding:32px;text-align:center}#placeholder[hidden],#dashboard[hidden]{display:none}#placeholder .number{width:64px;height:64px;display:grid;place-items:center;margin:0 auto 18px;border-radius:16px;color:var(--blue);background:var(--tint);font-size:24px;font-weight:700}h2{font-size:22px;margin:0 0 10px}.note{margin-top:14px;font-size:13px;color:var(--muted)}.note strong{font-weight:600;color:var(--text)}
+    @media(max-width:700px){header{padding:16px}.top{gap:14px;min-height:auto}.prototype{margin-left:auto}nav{order:3;width:100%;gap:4px}nav button{padding:10px 12px;flex:1;font-size:14px}main{padding:20px 12px}.heading{align-items:flex-start;flex-direction:column}h1{font-size:22px}.frame-wrap{height:70dvh;min-height:420px}.source{margin-left:20px}.viewer-bar{gap:8px;padding:12px}}
+  </style>
+</head>
+<body>
+  <header><div class="top">
+    <div class="brand"><span aria-hidden="true">招</span>创新招聘组</div>
+    <nav aria-label="工作台导航">
+      <button type="button" data-page="dashboard" aria-pressed="true">招聘过程看板</button>
+      <button type="button" data-page="tasks" aria-pressed="false">AI 开发进度</button>
+      <button type="button" data-page="positions" aria-pressed="false">岗位信息收集</button>
+    </nav>
+    <span class="prototype">招聘工作台</span>
+  </div></header>
+  <main>
+    <div class="heading"><div><p class="eyebrow">RECRUITMENT WORKSPACE</p><h1 id="page-title">招聘过程看板</h1><p id="page-description">在统一工作台中查看招聘全过程。</p></div>
+      <div class="actions" id="dashboard-actions"><button class="action" id="reload" type="button">重新加载</button><a class="action" id="open-source" target="_blank" rel="noopener noreferrer">打开源表格 ↗</a></div>
     </div>
-
-    <div id="app-shell" hidden>
-      <header class="site-header">
-        <div class="header-inner">
-          <a class="brand" href="#overview" aria-label="招聘经营看板，返回总览">
-            <span class="brand-mark" aria-hidden="true">
-              <svg viewBox="0 0 32 32" fill="none">
-                <path d="M7 22V16M16 22V9M25 22V5" stroke="currentColor" stroke-width="4" stroke-linecap="round" />
-                <path d="M5 28H27" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity=".35" />
-              </svg>
-            </span>
-            <div class="brand-copy">
-              <div class="brand-title-row"><h1>招聘经营看板</h1><span class="trial-badge">试运行</span></div>
-              <span class="brand-subtitle">团队结果 · 人员贡献 · 项目进展</span>
-            </div>
-          </a>
-
-          <nav class="primary-nav" aria-label="看板导航">
-            <a class="nav-link is-active" href="#overview">
-              <svg viewBox="0 0 20 20" aria-hidden="true" fill="none"><rect x="3" y="3" width="5" height="5" rx="1.3" /><rect x="12" y="3" width="5" height="5" rx="1.3" /><rect x="3" y="12" width="5" height="5" rx="1.3" /><rect x="12" y="12" width="5" height="5" rx="1.3" /></svg>
-              <span>总览</span>
-            </a>
-            <a class="nav-link" href="#people">
-              <svg viewBox="0 0 20 20" aria-hidden="true" fill="none"><circle cx="8" cy="6" r="3" /><path d="M2.5 17v-1a5.5 5.5 0 0 1 11 0v1M14 3.5a3 3 0 0 1 0 5.5M17.5 17v-1a5.5 5.5 0 0 0-2.5-4.6" /></svg>
-              <span>人员</span>
-            </a>
-            <a class="nav-link" href="#projects">
-              <svg viewBox="0 0 20 20" aria-hidden="true" fill="none"><rect x="3" y="6" width="14" height="11" rx="2" /><path d="M7 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M3 10.5c4.5 2 9.5 2 14 0M9 11h2" /></svg>
-              <span>项目</span>
-            </a>
-          </nav>
-
-          <div class="header-meta">
-            <div class="live-label"><span class="live-dot" aria-hidden="true"></span>日报主口径</div>
-            <div id="meta-status" class="meta-status"></div>
-          </div>
-        </div>
-      </header>
-
-      <main class="dashboard-main">
-        <section class="date-panel" aria-label="统计日期筛选">
-          <div class="date-panel-top">
-            <div class="date-summary">
-              <span class="field-eyebrow">统计区间</span>
-              <div id="date-label" class="date-label" aria-live="polite"></div>
-            </div>
-            <div class="date-presets" role="group" aria-label="选择统计区间">
-              <button type="button" class="preset-button is-active" data-preset="latest" aria-pressed="true">最新日报</button>
-              <button type="button" class="preset-button" data-preset="week" aria-pressed="false">近7日</button>
-              <button type="button" class="preset-button" data-preset="month" aria-pressed="false">本月</button>
-              <button type="button" class="preset-button" data-preset="all" aria-pressed="false">全部</button>
-              <button type="button" class="preset-button" data-preset="custom" aria-pressed="false">自选日期</button>
-            </div>
-          </div>
-          <div id="custom-range" class="custom-range" hidden>
-            <label class="date-field" for="start-date"><span>开始日期</span><input type="date" id="start-date" /></label>
-            <span class="date-range-divider" aria-hidden="true">—</span>
-            <label class="date-field" for="end-date"><span>结束日期</span><input type="date" id="end-date" /></label>
-            <button type="button" id="apply-range" class="btn btn-primary">查看</button>
-            <p id="range-error" class="range-error" role="alert"></p>
-          </div>
-          <p id="coverage-note" class="coverage-note"></p>
-        </section>
-
-        <section id="overview" class="page-section overview-section" aria-labelledby="overview-title">
-          <div class="section-heading">
-            <div>
-              <div class="section-eyebrow"><span class="section-indicator" aria-hidden="true"></span>团队总览</div>
-              <h2 id="overview-title" class="section-title">招聘结果与推进</h2>
-              <p class="section-subtitle">先看交付结果，再看邀约与面试进展。</p>
-            </div>
-            <span class="section-helper">点击数字可查看构成</span>
-          </div>
-          <div id="kpi-grid" class="kpi-grid" aria-live="polite"></div>
-          <div id="process-strip" class="process-strip"></div>
-          <div id="coverage-alert" class="coverage-alert" aria-live="polite"></div>
-        </section>
-
-        <section id="people" class="page-section people-section" aria-labelledby="people-title">
-          <div class="section-heading">
-            <div>
-              <div class="section-eyebrow"><span class="section-indicator" aria-hidden="true"></span>人员业绩</div>
-              <h2 id="people-title" class="section-title">每个人的工作与结果</h2>
-              <p class="section-subtitle">结合负责项目，查看个人贡献与推进情况。</p>
-            </div>
-            <div class="section-actions">
-              <label class="select-field" for="sort-metric"><span class="sr-only">人员排序指标</span>
-                <select id="sort-metric">
-                  <option value="source">原人员顺序</option>
-                  <option value="hire">按核实入职排序</option>
-                  <option value="attended">按实际到面排序</option>
-                  <option value="communicated">按我沟通排序</option>
-                  <option value="resumes">按收到简历排序</option>
-                </select>
-              </label>
-              <button type="button" id="toggle-full" class="btn btn-quiet" aria-pressed="false">完整日报</button>
-            </div>
-          </div>
-          <div class="people-surface">
-            <div id="people-table" class="table-wrap"></div>
-            <div id="people-cards" class="people-cards"></div>
-            <div class="mobile-table-action"><button type="button" id="mobile-table-toggle" class="btn btn-quiet" aria-expanded="false" aria-controls="people-table">查看完整对比表<svg viewBox="0 0 16 16" aria-hidden="true" fill="none"><path d="m5 3 5 5-5 5" /></svg></button></div>
-            <p id="people-note" class="source-note people-note"></p>
-          </div>
-        </section>
-
-        <div class="analysis-grid">
-          <section class="surface analysis-panel" aria-labelledby="interview-title">
-            <div class="section-heading panel-heading">
-              <div>
-                <div class="section-eyebrow"><span class="section-indicator" aria-hidden="true"></span>面试进展</div>
-                <h2 id="interview-title" class="section-title">邀约后的状态</h2>
-                <p class="section-subtitle">同一登记批次，查看当前推进结果。</p>
-              </div>
-            </div>
-            <div id="interview-panel" class="interview-panel"></div>
-          </section>
-
-          <section class="surface analysis-panel trend-panel" aria-labelledby="trend-title">
-            <div class="section-heading panel-heading">
-              <div>
-                <div class="section-eyebrow"><span class="section-indicator" aria-hidden="true"></span>近期变化</div>
-                <h2 id="trend-title" class="section-title">工作与交付的连续性</h2>
-              </div>
-              <label class="select-field trend-select" for="trend-metric"><span class="sr-only">趋势指标</span>
-                <select id="trend-metric">
-                  <option value="hire">核实入职</option>
-                  <option value="communicated">我沟通</option>
-                  <option value="wecom">企微添加</option>
-                  <option value="resumes">收到简历</option>
-                  <option value="attended">实际到面</option>
-                </select>
-              </label>
-            </div>
-            <div id="trend-area" class="trend-area"></div>
-            <p id="trend-note" class="source-note trend-note"></p>
-          </section>
-        </div>
-
-        <section id="attention" class="attention-panel" aria-label="数据待补与口径提醒"></section>
-
-        <section id="projects" class="page-section projects-section" aria-labelledby="projects-title">
-          <div class="section-heading">
-            <div>
-              <div class="section-eyebrow"><span class="section-indicator" aria-hidden="true"></span>项目分析</div>
-              <h2 id="projects-title" class="section-title">投入在哪，进展到哪</h2>
-              <p class="section-subtitle">按客户汇总，点击查看参与人员与项目明细。</p>
-            </div>
-            <label class="select-field" for="project-sort"><span class="sr-only">项目排序指标</span>
-              <select id="project-sort">
-                <option value="name">按项目名称排序</option>
-                <option value="hire">按核实入职排序</option>
-                <option value="attended">按实际到面排序</option>
-                <option value="resumes">按收到简历排序</option>
-              </select>
-            </label>
-          </div>
-          <div id="project-list" class="project-list"></div>
-          <p class="source-note project-source-note">面试按登记日期统计，入职按入职日期统计；各项数据保留自己的统计口径。</p>
-        </section>
-
-        <footer class="page-footer">
-          <div id="source-footer" class="source-footer"></div>
-          <button type="button" id="open-methodology" class="btn btn-quiet methodology-button"><svg viewBox="0 0 18 18" aria-hidden="true" fill="none"><circle cx="9" cy="9" r="6.5" /><path d="M9 8v4M9 5.5v.1" /></svg>指标说明</button>
-        </footer>
-      </main>
-    </div>
-
-    <dialog id="detail-dialog" class="detail-dialog" aria-labelledby="detail-title" aria-describedby="detail-subtitle">
-      <div class="dialog-header">
-        <div class="dialog-title-group">
-          <div id="detail-kicker" class="detail-kicker"></div>
-          <h2 id="detail-title" class="detail-title"></h2>
-          <p id="detail-subtitle" class="detail-subtitle"></p>
-        </div>
-        <button type="button" id="close-detail" class="icon-button close-detail" aria-label="关闭详情"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none"><path d="m6 6 12 12M18 6 6 18" /></svg></button>
+    <section class="viewer" id="main-viewer" aria-labelledby="page-title">
+      <div id="dashboard">
+        <div class="viewer-bar"><span class="dot" aria-hidden="true"></span><span id="load-status" role="status">快照日期：读取中…</span><a class="source" id="source-link" target="_blank" rel="noopener noreferrer">来源：企微在线表格 ↗</a></div>
+        <div class="frame-wrap"><iframe id="workbuddy-frame" title="创新招聘组 招聘过程看板" allow="fullscreen" allowfullscreen></iframe></div>
       </div>
-      <div id="detail-body" class="detail-body"></div>
-    </dialog>
-
-    <noscript><div class="noscript-notice">请启用浏览器的 JavaScript，以查看招聘数据和切换统计日期。</div></noscript>
-    <script type="module" src="./app.js"></script>
-  </body>
+    </section>
+    <section id="task-panel" hidden aria-labelledby="page-title">
+      <div class="task-loading" role="status">正在加载任务快照…</div>
+    </section>
+    <section id="positions-panel" hidden aria-labelledby="page-title"></section>
+    <p class="note" id="embed-note"><strong>页面说明：</strong>看板数据由《创新招聘组数据》企微在线表格实时快照生成，邀约/入职/企微/简历与月度日报同一套口径；任务与资料为只读副本，链接权限由原文档决定。</p>
+  </main>
+  <script>
+    // 三个页面分别展示招聘过程、滴答开发进度和文档入口。
+    const WORKBUDDY_URL = 'https://doc.weixin.qq.com/sheet/e3_AQsA_wYCAFMCNYd3nGEL1QQ6zjpQz';
+    const DASHBOARD_URL = './embeds/dashboard.html';
+    const pages = {
+      dashboard: {title: '招聘过程看板', description: '在统一工作台中查看招聘全过程。'},
+      tasks: {title: 'AI 开发进度', description: '月度排期与项目任务，集中查看。'},
+      positions: {title: '岗位信息收集', description: '企业招聘采集清单与团队数据，集中查阅。'}
+    };
+    const frame = document.getElementById('workbuddy-frame');
+    const status = document.getElementById('load-status');
+    let timeout;
+    function loadDashboard() {
+      clearTimeout(timeout);
+      status.textContent = '数据加载中…';
+      frame.src = DASHBOARD_URL;
+      timeout = setTimeout(() => {status.textContent = '加载超时，请点「重新加载」。';}, 18000);
+    }
+    frame.addEventListener('load', () => {
+      if (!frame.getAttribute('src')) return;
+      clearTimeout(timeout);
+      // 同站副本可检查实际内容，避免把错误文档的 load 事件当作成功。
+      const content = frame.contentDocument;
+      const hasDashboard = content && content.querySelector('#daypick') && content.querySelector('#hourglass');
+      const meta = content?.defaultView?.__DATA__?.meta;
+      const src = meta?.wecom_source || {};
+      const detailDays = Object.values(src).filter(x => x && Object.values(x).includes('detail')).length;
+      status.textContent = hasDashboard && meta
+        ? `数据截至 ${meta.latest_report} · 生成 ${meta.generated_at} · 企微明细口径 ${detailDays} 天`
+        : '看板内容校验失败，请点「重新加载」。';
+    });
+    frame.addEventListener('error', () => {clearTimeout(timeout);status.textContent = '加载失败，请点「重新加载」。';});
+    function showPage(key) {
+      const page = pages[key] || pages.dashboard;
+      const isDashboard = page === pages.dashboard;
+      const isTasks = page === pages.tasks;
+      const isPositions = page === pages.positions;
+      document.body.dataset.page = isTasks ? 'tasks' : isPositions ? 'positions' : 'dashboard';
+      document.querySelectorAll('[data-page]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.page === (pages[key] ? key : 'dashboard'))));
+      document.getElementById('page-title').textContent = page.title;
+      document.getElementById('page-description').textContent = page.description;
+      document.getElementById('dashboard').hidden = !isDashboard;
+      document.getElementById('main-viewer').hidden = !isDashboard;
+      document.getElementById('task-panel').hidden = !isTasks;
+      document.getElementById('positions-panel').hidden = !isPositions;
+      document.getElementById('dashboard-actions').style.display = isDashboard ? '' : 'none';
+      document.getElementById('embed-note').hidden = !isDashboard;
+      if (isTasks) document.dispatchEvent(new Event('task-preview:open'));
+      if (isPositions) document.dispatchEvent(new Event('positions:open'));
+    }
+    document.querySelectorAll('[data-page]').forEach(button => button.addEventListener('click', () => {location.hash = button.dataset.page;}));
+    window.addEventListener('hashchange', () => showPage(location.hash.slice(1)));
+    document.getElementById('reload').addEventListener('click', loadDashboard);
+    document.getElementById('open-source').href = WORKBUDDY_URL;
+    document.getElementById('source-link').href = WORKBUDDY_URL;
+    showPage(location.hash.slice(1));
+    loadDashboard();
+  </script>
+</body>
 </html>
