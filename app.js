@@ -256,17 +256,17 @@ function renderFunnel(b) {
   const wec = tot('企微添加数');
   const hireMain = metricRow('核实入职');
   const layers = [
-    { name: '触达曝光', v: reach, w: 100, bg: '#dbe9f8', fg: '#0c447c', rate: null, side: '我看过 + 看过我 · BOSS 平台记录', stage: 'reach' },
-    { name: '互动沟通', v: comm, w: 86, bg: '#c5dcf2', fg: '#0c447c', rate: pct(comm, reach), side: '我沟通 · BOSS 记录', stage: 'comm' },
-    { name: '收获简历', v: resume, w: 72, bg: '#a9cceb', fg: '#0c447c', rate: pct(resume, comm), side: 'BOSS 后台收获简历', stage: 'resume' },
-    { name: '企微添加数', v: wec, w: 60, bg: '#93bde4', fg: '#ffffff', rate: pct(wec, resume), side: '企微添加 · 不分摊到项目', stage: 'wecom' },
-    { name: '发出邀约', v: b.n, w: 48, bg: '#85b7e3', fg: '#ffffff', rate: pct(b.n, wec), side: '登记批次 · 跨源仅作量级参考', stage: 'invite' },
-    { name: '实际到面', v: b.arr, w: 36, bg: '#5d9fd6', fg: '#ffffff', rate: pct(b.arr, b.n), side: `未到面 <b>${b.noarr}</b> · 到面待补 <b>${b.apend}</b>`, stage: 'attended' },
-    { name: '面试通过', v: b.pass, w: 26, bg: '#3a84c4', fg: '#ffffff', rate: pct(b.pass, b.arr), side: `未通过 <b>${b.nopass}</b> · 结果待补 <b>${b.ppend}</b>`, stage: 'passed' }
+    { name: '触达曝光', v: reach, w: 100, bg: '#e6eaee', fg: '#33526b', rate: null, side: '我看过 + 看过我 · BOSS 平台记录', stage: 'reach' },
+    { name: '互动沟通', v: comm, w: 86, bg: '#ced8e0', fg: '#33526b', rate: pct(comm, reach), side: '我沟通 · BOSS 记录', stage: 'comm' },
+    { name: '收获简历', v: resume, w: 72, bg: '#b2c1cd', fg: '#33526b', rate: pct(resume, comm), side: 'BOSS 后台收获简历', stage: 'resume' },
+    { name: '企微添加数', v: wec, w: 60, bg: '#8ba4b6', fg: '#ffffff', rate: pct(wec, resume), side: '企微添加 · 不分摊到项目', stage: 'wecom' },
+    { name: '发出邀约', v: b.n, w: 48, bg: '#6d8ea8', fg: '#ffffff', rate: pct(b.n, wec), side: '登记批次 · 跨源仅作量级参考', stage: 'invite' },
+    { name: '实际到面', v: b.arr, w: 36, bg: '#4f7391', fg: '#ffffff', rate: pct(b.arr, b.n), side: `未到面 <b>${b.noarr}</b> · 到面待补 <b>${b.apend}</b>`, stage: 'attended' },
+    { name: '面试通过', v: b.pass, w: 26, bg: '#33526b', fg: '#ffffff', rate: pct(b.pass, b.arr), side: `未通过 <b>${b.nopass}</b> · 结果待补 <b>${b.ppend}</b>`, stage: 'passed' }
   ];
   let html = layers.map(funnelLayer).join('');
   html += funnelLayer({
-    name: '★入职', v: b.onb, w: 15, bg: '#0f6e56', fg: '#ffffff', rate: pct(b.onb, b.pass),
+    name: '★入职', v: b.onb, w: 15, bg: '#b03a2e', fg: '#ffffff', rate: pct(b.onb, b.pass),
     side: `同批已入职（含试岗离职 ${b.quit}）· 主表口径核实入职 <b>${num(hireMain)}</b> 人（按入职日期）`, stage: 'hired'
   });
   html += `<div class="hg-gap"><div class="line"></div><div class="gt">入职后留存跟踪 · 回访覆盖同批入职者</div></div>`;
@@ -277,9 +277,9 @@ function renderFunnel(b) {
     if (b.obAll === 0) s = '所选范围内暂无入职';
     return s;
   };
-  html += funnelLayer({ name: '入职1天回访', v: b.rv1, w: 26, bg: '#d6f1e3', fg: '#0a5c44', side: rvSide(b.rv1, true), stage: 'rv1' });
-  html += funnelLayer({ name: '3天回访', v: b.rv3, w: 38, bg: '#bfe8d4', fg: '#0a5c44', side: rvSide(b.rv3), stage: 'rv3' });
-  html += funnelLayer({ name: '7天回访', v: b.rv7, w: 52, bg: '#a9dfc4', fg: '#0a5c44', side: rvSide(b.rv7), stage: 'rv7' });
+  html += funnelLayer({ name: '入职1天回访', v: b.rv1, w: 26, bg: '#e3eaf0', fg: '#41576b', side: rvSide(b.rv1, true), stage: 'rv1' });
+  html += funnelLayer({ name: '3天回访', v: b.rv3, w: 38, bg: '#d3dee7', fg: '#41576b', side: rvSide(b.rv3), stage: 'rv3' });
+  html += funnelLayer({ name: '7天回访', v: b.rv7, w: 52, bg: '#c0d0dd', fg: '#33526b', side: rvSide(b.rv7), stage: 'rv7' });
   html += funnelLayer({ name: '入职30天', w: 68, side: '待建字段：邀约表新增「入职30天」', shell: true });
   html += funnelLayer({ name: '老带新', w: 84, side: '待建字段：邀约表新增「老带新」', shell: true });
   $('funnel').innerHTML = html;
@@ -313,7 +313,7 @@ function renderClientChart() {
   charts.client.resize();
   charts.client.setOption({
     grid: { left: 8, right: 40, top: 30, bottom: 8, containLabel: true },
-    legend: { top: 0, right: 0, itemWidth: 10, itemHeight: 10, textStyle: { fontSize: 11, color: '#5a6b81' } },
+    legend: { top: 0, right: 0, itemWidth: 10, itemHeight: 10, textStyle: { fontSize: 11, color: '#6e6a5c' } },
     tooltip: {
       trigger: 'item', confine: true,
       formatter: p => {
@@ -321,17 +321,17 @@ function renderClientChart() {
         return `<b>${esc(c.name)}</b><br/>发出邀约 ${c.n} · 实际到面 ${c.arr}<br/>面试通过 ${c.pass} · 入职 ${c.onb}${c.quit ? ` · 试岗离职 ${c.quit}` : ''}<br/>到面率 ${pct(c.arr, c.n)} · 已反馈通过率 ${pct(c.pass, c.pass + c.nopass)}`;
       }
     },
-    xAxis: { type: 'value', splitLine: { lineStyle: { color: '#eef1f5' } }, axisLabel: { fontSize: 11, color: '#8a96a6' } },
+    xAxis: { type: 'value', splitLine: { lineStyle: { color: '#eae5d6' } }, axisLabel: { fontSize: 11, color: '#99937f' } },
     yAxis: {
       type: 'category', data: names,
-      axisLabel: { fontSize: 12, color: '#172b43', width: 90, overflow: 'truncate' },
-      axisTick: { show: false }, axisLine: { lineStyle: { color: '#d4dae3' } }
+      axisLabel: { fontSize: 12, color: '#211d15', width: 90, overflow: 'truncate' },
+      axisTick: { show: false }, axisLine: { lineStyle: { color: '#c9c2ae' } }
     },
     series: [
-      { name: '到面未通过', type: 'bar', stack: 't', itemStyle: { color: '#9cc3e8' }, data: passRest.map((v, i) => Math.max(0, arrived[i] - passed[i])), barMaxWidth: 16, cursor: 'pointer' },
-      { name: '面试通过未入职', type: 'bar', stack: 't', itemStyle: { color: '#3a84c4' }, data: passed.map((v, i) => Math.max(0, v - onb[i])), barMaxWidth: 16, cursor: 'pointer' },
-      { name: '核实入职', type: 'bar', stack: 't', itemStyle: { color: '#0f6e56' }, data: onb, barMaxWidth: 16, label: { show: true, position: 'right', fontSize: 11, color: '#0f6e56', fontWeight: 600, formatter: p => `${p.value}/${clients[clients.length - 1 - p.dataIndex].n}`, }, cursor: 'pointer' },
-      { name: '未到面/待补', type: 'bar', stack: 't', itemStyle: { color: '#d7dee8' }, data: remain, barMaxWidth: 16, cursor: 'pointer' }
+      { name: '到面未通过', type: 'bar', stack: 't', itemStyle: { color: '#8ba4b6' }, data: passRest.map((v, i) => Math.max(0, arrived[i] - passed[i])), barMaxWidth: 16, cursor: 'pointer' },
+      { name: '面试通过未入职', type: 'bar', stack: 't', itemStyle: { color: '#33526b' }, data: passed.map((v, i) => Math.max(0, v - onb[i])), barMaxWidth: 16, cursor: 'pointer' },
+      { name: '核实入职', type: 'bar', stack: 't', itemStyle: { color: '#b03a2e' }, data: onb, barMaxWidth: 16, label: { show: true, position: 'right', fontSize: 11, color: '#b03a2e', fontWeight: 600, formatter: p => `${p.value}/${clients[clients.length - 1 - p.dataIndex].n}`, }, cursor: 'pointer' },
+      { name: '未到面/待补', type: 'bar', stack: 't', itemStyle: { color: '#dbe1e7' }, data: remain, barMaxWidth: 16, cursor: 'pointer' }
     ]
   }, true);
   charts.client.off('click');
@@ -350,7 +350,7 @@ function renderPeopleChart() {
   const arr = stats.map(s => s.b.arr).reverse();
   charts.people.setOption({
     grid: { left: 8, right: 40, top: 30, bottom: 8, containLabel: true },
-    legend: { top: 0, right: 0, itemWidth: 10, itemHeight: 10, textStyle: { fontSize: 11, color: '#5a6b81' } },
+    legend: { top: 0, right: 0, itemWidth: 10, itemHeight: 10, textStyle: { fontSize: 11, color: '#6e6a5c' } },
     tooltip: {
       trigger: 'axis', confine: true,
       formatter: ps => {
@@ -359,16 +359,16 @@ function renderPeopleChart() {
         return `<b>${esc(s.p)}</b><br/>核实入职（主表） ${s.hireMain || 0} · 批次入职 ${s.b.onb}<br/>面试通过 ${s.b.pass}${fb ? ` · 已反馈通过率 ${pct(s.b.pass, fb)}` : ''}<br/>实际到面 ${s.b.arr} · 发出邀约 ${s.b.n}<br/>企微添加 ${num(metricRow('企微添加数', s.p))} · 我沟通 ${num(metricRow('我沟通', s.p))}`;
       }
     },
-    xAxis: { type: 'value', splitLine: { lineStyle: { color: '#eef1f5' } }, axisLabel: { fontSize: 11, color: '#8a96a6' }, minInterval: 1 },
+    xAxis: { type: 'value', splitLine: { lineStyle: { color: '#eae5d6' } }, axisLabel: { fontSize: 11, color: '#99937f' }, minInterval: 1 },
     yAxis: {
       type: 'category', data: names,
-      axisLabel: { fontSize: 12, color: '#172b43' },
-      axisTick: { show: false }, axisLine: { lineStyle: { color: '#d4dae3' } }
+      axisLabel: { fontSize: 12, color: '#211d15' },
+      axisTick: { show: false }, axisLine: { lineStyle: { color: '#c9c2ae' } }
     },
     series: [
-      { name: '实际到面', type: 'bar', data: arr, itemStyle: { color: '#9cc3e8', borderRadius: [0, 4, 4, 0] }, barGap: '-100%', barMaxWidth: 12, zIndex: 1, cursor: 'pointer' },
-      { name: '面试通过', type: 'bar', data: pass, itemStyle: { color: '#3a84c4', borderRadius: [0, 4, 4, 0] }, barGap: '-100%', barMaxWidth: 8, zIndex: 2, cursor: 'pointer' },
-      { name: '核实入职', type: 'bar', data: hire, itemStyle: { color: '#0f6e56', borderRadius: [0, 4, 4, 0] }, barMaxWidth: 12, zIndex: 3, label: { show: true, position: 'right', fontSize: 11, fontWeight: 600, color: '#0f6e56' }, cursor: 'pointer' }
+      { name: '实际到面', type: 'bar', data: arr, itemStyle: { color: '#8ba4b6', borderRadius: [0, 4, 4, 0] }, barGap: '-100%', barMaxWidth: 12, zIndex: 1, cursor: 'pointer' },
+      { name: '面试通过', type: 'bar', data: pass, itemStyle: { color: '#33526b', borderRadius: [0, 4, 4, 0] }, barGap: '-100%', barMaxWidth: 8, zIndex: 2, cursor: 'pointer' },
+      { name: '核实入职', type: 'bar', data: hire, itemStyle: { color: '#b03a2e', borderRadius: [0, 4, 4, 0] }, barMaxWidth: 12, zIndex: 3, label: { show: true, position: 'right', fontSize: 11, fontWeight: 600, color: '#b03a2e' }, cursor: 'pointer' }
     ]
   }, true);
   charts.people.off('click');
@@ -390,18 +390,18 @@ function renderTrend() {
     : '所选区间暂无日报覆盖。';
   charts.trend.setOption({
     grid: baseGrid(),
-    legend: { top: 0, right: 0, itemWidth: 14, itemHeight: 3, textStyle: { fontSize: 11, color: '#5a6b81' } },
+    legend: { top: 0, right: 0, itemWidth: 14, itemHeight: 3, textStyle: { fontSize: 11, color: '#6e6a5c' } },
     tooltip: {
       trigger: 'axis', confine: true,
       formatter: ps => `<b>${pretty(ps[0].axisValue)}</b><br/>` + ps.map(p => `${p.marker}${p.seriesName} ${p.value ?? 0}`).join('<br/>')
     },
-    xAxis: { type: 'category', data: s.days, axisLabel: { fontSize: 11, color: '#8a96a6', formatter: short }, boundaryGap: false, axisLine: { lineStyle: { color: '#d4dae3' } } },
-    yAxis: { type: 'value', minInterval: 1, splitLine: { lineStyle: { color: '#eef1f5' } }, axisLabel: { fontSize: 11, color: '#8a96a6' } },
+    xAxis: { type: 'category', data: s.days, axisLabel: { fontSize: 11, color: '#99937f', formatter: short }, boundaryGap: false, axisLine: { lineStyle: { color: '#c9c2ae' } } },
+    yAxis: { type: 'value', minInterval: 1, splitLine: { lineStyle: { color: '#eae5d6' } }, axisLabel: { fontSize: 11, color: '#99937f' } },
     series: [
-      { name: '发出邀约', type: 'line', data: s.invite, smooth: true, symbolSize: 6, lineStyle: { width: 2.5, color: '#3a84c4' }, itemStyle: { color: '#3a84c4' } },
-      { name: '实际到面', type: 'line', data: s.arr, smooth: true, symbolSize: 6, lineStyle: { width: 2.5, color: '#5d9fd6' }, itemStyle: { color: '#5d9fd6' } },
-      { name: '面试通过', type: 'line', data: s.pass, smooth: true, symbolSize: 6, lineStyle: { width: 2.5, color: '#d9a441' }, itemStyle: { color: '#d9a441' } },
-      { name: '核实入职', type: 'line', data: s.hire, smooth: true, symbolSize: 6, lineStyle: { width: 2.5, color: '#0f6e56' }, itemStyle: { color: '#0f6e56' }, areaStyle: { color: 'rgba(15,110,86,.08)' } }
+      { name: '发出邀约', type: 'line', data: s.invite, smooth: false, symbolSize: 5, lineStyle: { width: 1.5, color: '#9db0bf' }, itemStyle: { color: '#9db0bf' } },
+      { name: '实际到面', type: 'line', data: s.arr, smooth: true, symbolSize: 6, lineStyle: { width: 2, color: '#6d8ea8' }, itemStyle: { color: '#6d8ea8' } },
+      { name: '面试通过', type: 'line', data: s.pass, smooth: true, symbolSize: 6, lineStyle: { width: 2, color: '#a97b2f' }, itemStyle: { color: '#a97b2f' } },
+      { name: '核实入职', type: 'line', data: s.hire, smooth: true, symbolSize: 6, lineStyle: { width: 2.5, color: '#b03a2e' }, itemStyle: { color: '#b03a2e' }, areaStyle: { color: 'rgba(176,58,46,.08)' } }
     ]
   }, true);
   charts.trend.off('click');
@@ -541,16 +541,16 @@ function renderStage(stage, subtitle) {
   if (stage === 'invite') {
     body += `<div class="detail-grid">${stat('发出邀约', b.n, '按登记日期')}${stat('已到面', b.arr)}${stat('未到面', b.noarr)}${stat('到面待补', b.apend)}</div>`;
     body += statusBlock('邀约后的到面状态', [
-      { label: '已到面', value: b.arr, color: '#3a84c4' },
-      { label: '未到面', value: b.noarr, color: '#d7dee8' },
-      { label: '状态待补', value: b.apend, color: '#d9a441' }
+      { label: '已到面', value: b.arr, color: '#6d8ea8' },
+      { label: '未到面', value: b.noarr, color: '#dbe1e7' },
+      { label: '状态待补', value: b.apend, color: '#c09a4e' }
     ], b.n);
   } else if (stage === 'attended') {
     body += `<div class="detail-grid">${stat('实际到面', b.arr, '同一登记批次')}${stat('面试通过', b.pass)}${stat('未通过', b.nopass)}${stat('结果待补', b.ppend)}</div>`;
     body += statusBlock('已到面的面试结果', [
-      { label: '通过', value: b.pass, color: '#0f6e56' },
-      { label: '未通过', value: b.nopass, color: '#d7dee8' },
-      { label: '结果待补', value: b.ppend, color: '#d9a441' }
+      { label: '通过', value: b.pass, color: '#b03a2e' },
+      { label: '未通过', value: b.nopass, color: '#dbe1e7' },
+      { label: '结果待补', value: b.ppend, color: '#c09a4e' }
     ], b.arr);
     const fb = b.pass + b.nopass;
     body += `<div class="info-callout"><strong>已反馈面试通过率</strong><p>${fb ? `${b.pass} ÷ ${fb} ＝ ${pct(b.pass, fb)}。分母仅含已到面且结果明确为通过/未通过的记录。` : '暂无已反馈样本。'}</p></div>`;
@@ -587,9 +587,9 @@ function renderPerson(person, subtitle) {
     ${stat('企微添加', metricRow('企微添加数', person))}
   </div>`;
   body += statusBlock('邀约推进', [
-    { label: '已到面', value: pb.arr, color: '#3a84c4' },
-    { label: '未到面', value: pb.noarr, color: '#d7dee8' },
-    { label: '待补', value: pb.apend, color: '#d9a441' }
+    { label: '已到面', value: pb.arr, color: '#6d8ea8' },
+    { label: '未到面', value: pb.noarr, color: '#dbe1e7' },
+    { label: '待补', value: pb.apend, color: '#c09a4e' }
   ], pb.n);
   if (pb.apend || pb.ppend) body += `<div class="info-callout"><strong>需要确认</strong><p>${pb.apend ? `到面状态待补 ${pb.apend} 条；` : ''}${pb.ppend ? `面试结果待补 ${pb.ppend} 条。` : ''}</p></div>`;
   body += `<h3>参与项目</h3>${clients.length ? simpleTable(['项目', '邀约', '到面', '通过', '入职', '岗位'], clients.map(c => [clientLink(c.name), c.n, c.arr, c.pass, c.onb, esc([...c.jobs].slice(0, 3).join('、'))])) : '<p class="source-note">所选区间该人员没有邀约登记记录。</p>'}`;
@@ -609,9 +609,9 @@ function renderClient(client, subtitle) {
     ${stat('入职', c.onb, c.quit ? `试岗离职 ${c.quit}` : '')}
   </div>`;
   body += statusBlock('邀约推进', [
-    { label: '已到面', value: c.arr, color: '#3a84c4' },
-    { label: '未到面', value: c.noarr, color: '#d7dee8' },
-    { label: '待补', value: c.apend, color: '#d9a441' }
+    { label: '已到面', value: c.arr, color: '#6d8ea8' },
+    { label: '未到面', value: c.noarr, color: '#dbe1e7' },
+    { label: '待补', value: c.apend, color: '#c09a4e' }
   ], c.n);
   body += `<h3>参与人员</h3>${simpleTable(['招聘专员', '邀约', '到面', '通过', '入职'], [...c.people].map(p => {
     const pc = clientsInRange(p).find(x => x.name === client) || { n: 0, arr: 0, pass: 0, onb: 0 };
