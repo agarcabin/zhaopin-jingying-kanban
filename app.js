@@ -1,258 +1,750 @@
-import {CORE_METRICS,FULL_METRICS,SNAPSHOT_METRICS,PLATFORM_METRICS,COHORT_METRICS,isoValid,shiftDate,inRange,presetRange,aggregateDaily,aggregateInvites,aggregateHires,sourceCoverage,projectsForPeriod,trendPoints,numericSort,unique,total} from './model.js';
+// 招聘经营看板 · 优化版
+// 数据来源：正式版《创新招聘组数据》快照（scripts/build-data.mjs 生成 data.json）
+// 口径与正式版一致：日报主表 + 邀约登记批次（invite_records）+ 客户分布。
 
-let data;
-const state = {start:'',end:'',preset:'latest',full:false,mobileTable:false,sort:'source',projectSort:'hire',trend:'hire',detail:null};
 const $ = id => document.getElementById(id);
-const num = v => Number.isFinite(v) ? new Intl.NumberFormat('zh-CN').format(v) : '—';
-const esc = v => String(v ?? '').replace(/[&<>"']/g,c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const short = date => date ? `${Number(date.slice(5,7))}/${Number(date.slice(8,10))}` : '—';
-const pretty = date => date ? `${date.slice(0,4)}年${Number(date.slice(5,7))}月${Number(date.slice(8,10))}日` : '—';
-const span = (start=state.start,end=state.end) => start === end ? pretty(start) : `${start.slice(0,4)}/${short(start)} — ${start.slice(0,4)===end.slice(0,4)?short(end):end.slice(0,4)+'/'+short(end)}`;
-const sourceStamp = value => value ? value.slice(0,16).replace('T',' ').replaceAll('-','/') : '—';
-const def = key => data.metricDefinitions.find(m => m.key === key) || {label:key,unit:'',note:''};
-const label = key => def(key).label.replace(/^★\s*/, '');
-const names = ids => ids.map(id=>data.recruiters.find(r=>r.id===id)?.name || id).join('、');
-const sortKey = value => ({hire:'verifiedHires',attended:'attended',communicated:'conversations',resumes:'resumes',wecom:'wecomAdds'}[value] || value);
-const empty = text => `<div class="empty-state"><strong>暂无对应记录</strong><p>${esc(text)}</p></div>`;
-const metricButton = (key,value,extra='') => `<button class="value-button" data-action="metric" data-metric="${key}" ${extra} aria-label="查看${esc(label(key))}构成">${num(value)}</button>`;
-const stat = (labelText,value,note='') => `<div class="detail-stat"><span class="stat-label">${esc(labelText)}</span><strong class="stat-value">${num(value)}</strong>${note?`<small>${esc(note)}</small>`:''}</div>`;
+const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const num = v => (v === null || v === undefined || !Number.isFinite(Number(v))) ? '—' : Number(v).toLocaleString('zh-CN');
+const pct = (a, b) => (b > 0 && Number.isFinite(a)) ? (100 * a / b).toFixed(1) + '%' : '—';
+const short = d => d ? `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}` : '—';
+const pretty = d => d ? `${d.slice(0, 4)}年${Number(d.slice(5, 7))}月${Number(d.slice(8, 10))}日` : '—';
+const stamp = v => v ? String(v).slice(0, 16).replace('T', ' ').replaceAll('-', '/') : '—';
 
-function coverageText(agg,key) {
-  const c=agg.coverage[key];
-  if(!c?.days) return key==='resumes' ? `${short(data.meta.resumeStart)}起有数据` : '暂无对应记录';
-  if(SNAPSHOT_METRICS.has(key)) return `${short(agg.lastDate)}报表值`;
-  if(c.days < agg.requestedDays || c.missingCells) return `已覆盖 ${short(c.start)}—${short(c.end)} · ${c.days}天`;
-  return '';
-}
-function dateBasis(key) {
-  if(key==='verifiedHires') return '按入职日期统计';
-  if(COHORT_METRICS.has(key)) return key==='invitations' ? '按登记日期统计' : '所选登记批次的最新状态';
-  if(SNAPSHOT_METRICS.has(key)) return '按末日报表值展示';
-  return '按记录日期统计';
-}
-function selectedPeople() {
-  const people=data.recruiters.map(r=>({...r,aggregate:aggregateDaily(data,state.start,state.end,r.id)}));
-  if(state.sort==='source') return people.sort((a,b)=>a.order-b.order);
-  const key=sortKey(state.sort);
-  return people.sort((a,b)=>numericSort(a.aggregate.values,b.aggregate.values,key) || a.order-b.order);
-}
-function setRange(start,end,preset='custom') {
-  if(!isoValid(start)||!isoValid(end)||start>end){$('range-error').textContent='请选择有效日期，开始日期不能晚于结束日期。';return false;}
-  state.start=start;state.end=end;state.preset=preset;
-  $('range-error').textContent='';$('start-date').value=start;$('end-date').value=end;
-  $('custom-range').hidden=preset!=='custom';
-  const url=new URL(location.href);url.searchParams.set('view',preset);
-  if(preset==='custom'){url.searchParams.set('start',start);url.searchParams.set('end',end);}
-  else{url.searchParams.delete('start');url.searchParams.delete('end');}
-  history.replaceState(null,'',url);
-  render();return true;
-}
+let data = null;
+let PEOPLE = [];
+const state = { mode: 'day', day: '', from: '', to: '', preset: 'latest' };
+const charts = { client: null, people: null, trend: null };
 
-function renderHeader(agg) {
-  $('date-label').textContent=span();
-  document.querySelectorAll('[data-preset]').forEach(b=>{const active=b.dataset.preset===state.preset;b.classList.toggle('is-active',active);b.setAttribute('aria-pressed',String(active));});
-  const actual=agg.dates.length?`${short(agg.dates[0])}—${short(agg.dates.at(-1))}，${agg.dates.length}天`:'无日报记录';
-  $('coverage-note').textContent=agg.dates.length===agg.requestedDays?`${agg.dates.length}天日报 · ${data.recruiters.length}位招聘专员`:`所选${agg.requestedDays}天 · 已有日报：${actual}`;
-  $('meta-status').innerHTML=`<span>日报截至 <strong>${esc(short(data.meta.periodEnd))}</strong></span><span>源表生成 ${esc(sourceStamp(data.meta.sourceGeneratedAt))}</span>`;
-}
-function renderOverview(agg) {
-  const keys=['verifiedHires','passed','attended','invitations'];
-  $('kpi-grid').innerHTML=keys.map((key,i)=>`<article class="metric-card ${i===0?'metric-card--hire':'metric-card--cohort'}"><div class="metric-eyebrow">${i===0?'入职结果':i===1?'面试结果':i===2?'面试推进':'邀约登记'}</div><div class="metric-label">${esc(label(key))}<button class="metric-action" data-action="metric" data-metric="${key}" aria-label="查看${esc(label(key))}详情">↗</button></div><button class="metric-value" data-action="metric" data-metric="${key}" aria-label="${esc(label(key))}${num(agg.values[key])}人，查看构成">${num(agg.values[key])}<span class="metric-unit">人</span></button><div class="metric-note">${dateBasis(key)}</div></article>`).join('');
-  $('process-strip').innerHTML=['conversations','wecomAdds','resumes'].map(key=>`<button class="process-item" data-action="metric" data-metric="${key}"><span class="process-label">${esc(label(key))}</span><strong class="process-value">${num(agg.values[key])}</strong><span class="process-note">${key==='resumes' ? coverageText(agg,key)||'邮箱收到简历' : key==='wecomAdds'?'按添加日期':'平台沟通记录'}</span></button>`).join('');
-  const incomplete=sourceCoverage(data,state.start,state.end).filter(r=>!r.covered);
-  if(!agg.hasData){$('coverage-alert').hidden=false;$('coverage-alert').innerHTML='<span class="badge badge--amber">暂无日报</span><span>这个区间尚无日报记录，请调整日期查看。</span>';}
-  else if(incomplete.length){$('coverage-alert').hidden=false;$('coverage-alert').innerHTML=`<span class="badge badge--amber">来源覆盖提示</span><span>${incomplete.map(r=>`${short(r.date)} BOSS原始记录覆盖${r.reportedCount}/${r.expectedCount}人`).join('；')}。日报中的0保留原值，不据此判断是否工作。</span>`;}
-  else{$('coverage-alert').hidden=true;$('coverage-alert').innerHTML='';}
-}
-function renderPeople(agg) {
-  const people=selectedPeople();const keys=state.full?FULL_METRICS:CORE_METRICS;
-  const table=`<table class="data-table"><thead><tr><th scope="col" class="metric-name">${state.full?'日报指标':'核心指标'}</th><th scope="col" class="total-column">合计</th>${people.map(p=>`<th scope="col"><button class="person-name" data-action="person" data-id="${p.id}">${esc(p.name)}<span class="subtle"> ↗</span></button></th>`).join('')}</tr></thead><tbody>${keys.map(key=>`<tr class="${key==='verifiedHires'?'hire-row':''}"><th scope="row" class="metric-name"><button data-action="metric" data-metric="${key}" class="metric-label-button">${esc(label(key))}</button>${(SNAPSHOT_METRICS.has(key)&&state.start!==state.end)?`<small class="subtle">${short(agg.lastDate)}报表值</small>`:''}${key==='resumes'&&coverageText(agg,key)?`<small class="subtle">${esc(coverageText(agg,key))}</small>`:''}</th><td class="total-column">${metricButton(key,agg.values[key])}</td>${people.map(p=>`<td>${metricButton(key,p.aggregate.values[key],`data-id="${p.id}"`)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
-  $('people-table').innerHTML=agg.hasData?table:empty('当前日期没有招聘日报。');
-  $('people-table').classList.toggle('mobile-open',state.mobileTable);
-  $('people-cards').innerHTML=agg.hasData?people.map(p=>{const v=p.aggregate.values;const coverage=sourceCoverage(data,state.start,state.end,p.id);const absent=coverage.filter(r=>!r.covered);return `<article class="person-card"><div class="person-head"><button class="person-name" data-action="person" data-id="${p.id}"><span class="person-avatar">${esc(p.name.slice(0,1))}</span>${esc(p.name)}<span class="person-action">查看详情 ↗</span></button></div><div class="person-kpis">${[['verifiedHires','核实入职'],['passed','面试通过'],['attended','实际到面']].map(([key,title])=>`<button data-action="metric" data-metric="${key}" data-id="${p.id}"><span class="stat-label">${title}</span><strong class="stat-value ${key==='verifiedHires'?'hire-value':''}">${num(v[key])}</strong></button>`).join('')}</div><div class="person-process"><span>我沟通 <b>${num(v.conversations)}</b></span><span>企微添加 <b>${num(v.wecomAdds)}</b></span><span>收到简历 <b>${num(v.resumes)}</b></span></div>${absent.length?`<p class="person-meta">${absent.map(r=>short(r.date)).join('、')} BOSS明细暂无记录</p>`:''}</article>`;}).join(''):empty('调整日期后查看全员表现。');
-  $('toggle-full').textContent=state.full?'收起完整日报':'展开完整日报';$('toggle-full').setAttribute('aria-expanded',String(state.full));$('toggle-full').setAttribute('aria-pressed',String(state.full));
-  $('mobile-table-toggle').textContent=state.mobileTable?'收起对比表':'查看完整对比表';$('mobile-table-toggle').setAttribute('aria-expanded',String(state.mobileTable));
-  const resumeNote=coverageText(agg,'resumes');
-  $('people-note').innerHTML=`<span>到面、通过按登记批次；核实入职按入职日期。</span>${resumeNote?`<span>收到简历：${esc(resumeNote)}。</span>`:''}${state.full?'<span>岗位与账号为末日报表值；账号暂不用于效率排名。</span>':''}`;
-}
-function statusBlock(title,parts,sum) {
-  const content=parts.map(p=>`<div class="legend-item"><span class="dot" style="background:${p.color}"></span><span>${p.label}</span><strong>${num(p.value)}</strong></div>`).join('');
-  return `<div class="status-row"><div class="status-title"><strong>${title}</strong><span class="muted">共${num(sum)}人</span></div><div class="status-track" aria-hidden="true">${sum?parts.filter(p=>p.value>0).map(p=>`<span class="status-segment" style="width:${p.value/sum*100}%;background:${p.color}"></span>`).join(''):'<span class="status-segment status-segment--empty" style="width:100%"></span>'}</div><div class="legend">${content}</div></div>`;
-}
-function renderInterviews(agg) {
-  if(!agg.hasData){$('interview-panel').innerHTML=empty('当前区间尚无日报记录。');return;}
-  const i=aggregateInvites(data,state.start,state.end);
-  const h=aggregateHires(data,state.start,state.end);
-  $('interview-panel').innerHTML=`<p class="source-note">${span()}登记批次 · 状态以本次源文件为准</p>${statusBlock('邀约后的到面状态',[{label:'已到面',value:i.attended,color:'#3b7d8f'},{label:'未到面',value:i.noShows,color:'#a8b4c2'},{label:'状态未填',value:i.statusUnknown,color:'#d5a04b'}],i.invitations)}${statusBlock('已到面的面试结果',[{label:'通过',value:i.passed,color:'#2c8b78'},{label:'未通过',value:i.failed,color:'#a8b4c2'},{label:'结果未填',value:i.resultUnknown,color:'#d5a04b'}],i.attended)}<div class="interview-summary"><div><span class="stat-label">已反馈面试通过率</span><strong class="feedback-rate">${i.passRate===null?'—':(i.passRate*100).toFixed(1)+'%'}</strong><span class="source-note">${i.feedbackCount?`${i.passed} / ${i.feedbackCount} · 另有${i.resultUnknown}条结果未填`:'尚无已到面且有反馈的记录'}</span></div><button class="btn btn-quiet" data-action="interview">查看构成 ↗</button></div><p class="source-note">入职另按入职日期统计，本期核实${num(h.verified)}人，不与本期通过数直接计算转化率。</p>`;
-}
-function renderAttention(agg) {
-  const i=aggregateInvites(data,state.start,state.end),h=aggregateHires(data,state.start,state.end);
-  const messages=[];
-  if(i.statusUnknown)messages.push(`<li><b>${i.statusUnknown}条到面状态未填写</b><span>日报列为“待面试/待定”，不等同未来预约。</span></li>`);
-  if(i.resultUnknown)messages.push(`<li><b>${i.resultUnknown}条面试结果未填写</b><span>已确认到面，尚未记录通过或不通过。</span></li>`);
-  if(h.verified)messages.push(`<li><b>${h.verified}条核实入职暂无满一天信息</b><span>仅按核实入职展示，不推定持续在职或留存。</span></li>`);
-  if(h.trialExcluded)messages.push(`<li><b>${h.trialExcluded}条试岗当天离职已排除</b><span>不计入核实入职。</span></li>`);
-  const n=i.statusUnknown+i.resultUnknown;
-  $('attention').innerHTML=`<details><summary><span>数据待核对</span><span class="badge ${n?'badge--amber':'badge--blue'}">${n?`${n}条面试状态待补`:'查看口径说明'}</span><span class="subtle">${short(state.start)}${state.start!==state.end?'—'+short(state.end):''}</span></summary><div class="attention-content">${messages.length?`<ul class="detail-list">${messages.join('')}</ul>`:'<p class="source-note">所选登记批次未发现到面状态或面试结果待补项。记录是否完整仍以实际填报为准。</p>'}<button class="btn btn-quiet" data-action="methodology">查看全部指标口径 ↗</button></div></details>`;
-}
-function projectCell(p,key) {
-  if(p[key]===null)return '—';
-  const source = ['invitations','attended','passed','noShows','statusUnknown','failed','resultUnknown'].includes(key)?'invites':['verifiedHires','reported','trialExcluded'].includes(key)?'hires':key==='resumes'?'resumes':'boss';
-  if(!p.sourcePresence[source])return '<span class="muted">无记录</span>';
-  return num(p[key]);
-}
-function projectStat(p,key,note) {
-  return `<div class="detail-stat"><span class="stat-label">${esc(label(key))}</span><strong class="stat-value">${projectCell(p,key)}</strong><small>${esc(note)}</small></div>`;
-}
-function renderProjects() {
-  const projects=projectsForPeriod(data,state.start,state.end);
-  if(state.projectSort==='name')projects.sort((a,b)=>a.client.localeCompare(b.client,'zh-CN'));
-  else projects.sort((a,b)=>numericSort(a,b,sortKey(state.projectSort)) || a.client.localeCompare(b.client,'zh-CN'));
-  if(!projects.length){$('project-list').innerHTML=empty('所选区间的补充明细没有客户项目记录。');return;}
-  const keys=['conversations','resumes','invitations','attended','passed','verifiedHires'];
-  const table=`<div class="project-table-wrap table-wrap"><table class="data-table project-table"><thead><tr><th>客户 / 项目</th><th>涉及人员</th>${keys.map(k=>`<th>${esc(label(k))}</th>`).join('')}</tr></thead><tbody>${projects.map(p=>`<tr><th scope="row"><button class="person-name" data-action="project" data-client="${esc(p.client)}">${esc(p.client)} ↗</button></th><td class="project-people">${esc(names(p.recruiterIds))}</td>${keys.map(k=>`<td><button class="value-button" data-action="project" data-client="${esc(p.client)}">${projectCell(p,k)}</button></td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
-  const cards=`<div class="project-cards">${projects.map(p=>`<article class="project-card"><div class="project-head"><button class="person-name" data-action="project" data-client="${esc(p.client)}">${esc(p.client)} <span class="person-action">项目详情 ↗</span></button><p class="project-members">${esc(names(p.recruiterIds))}</p></div><div class="project-stats">${['verifiedHires','attended','invitations'].map(k=>`<div><span class="stat-label">${label(k)}</span><strong class="stat-value">${projectCell(p,k)}</strong></div>`).join('')}</div><div class="person-process"><span>我沟通 <b>${projectCell(p,'conversations')}</b></span><span>收到简历 <b>${projectCell(p,'resumes')}</b></span></div>${p.resumes>0&&!p.sourcePresence.invites?'<p class="insight-note">邀约表尚无记录，后续进展待核对</p>':''}</article>`).join('')}</div>`;
-  $('project-list').innerHTML=table+cards+`<p class="source-note">所选区间有记录的客户 ${projects.length} 个。无记录表示对应明细未收录；企微添加不分摊到项目。简历自${short(data.meta.resumeStart)}起有数据；面试按登记批次，入职按入职日期。</p>`;
-}
+const METRIC_NOTES = {
+  '发布岗位数': '按当日后台记录行计；区间显示最近一个有日报日的报表值，不跨日求和。',
+  'BOSS帐号': '按当日后台记录行计；区间显示最近一个有日报日的报表值。',
+  '我看过': 'BOSS 后台「我看过候选人」记录，按记录日期统计。',
+  '看过我': 'BOSS 后台「看过我的候选人」记录，按记录日期统计。',
+  '我打招呼': '平台日上限 100，不作为努力程度排名依据；0 与缺数含义不同。',
+  '牛人新招呼': 'BOSS 后台主动打招呼的牛人数，按记录日期统计。',
+  '我沟通': 'BOSS 后台沟通记录，按记录日期统计。',
+  '企微添加数': '按企微添加日期统计。',
+  '收到简历数': '邮箱收到简历，自 rcv_start 起统计；之前为缺失。',
+  '收获简历': 'BOSS 后台收获简历，按记录日期统计。',
+  '发出邀约': '邀约登记批次按登记日期计（批次口径）。',
+  '实际到面': '所选登记批次的当前状态，按登记日期归组。',
+  '未到面': '所选登记批次的当前状态，按登记日期归组。',
+  '待面试/待定': '到面状态未填写，不等同未来预约。',
+  '面试通过': '已到面批次中结果为通过的记录，按登记日期归组。',
+  '核实入职': '《普工招聘信息》「是否入职＝是」，按入职日期统计；试岗当天离职已排除。'
+};
 
-function chartMarkup(points,key,width) {
-  const w=Math.max(280,Math.min(1000,width||720)),height=240,left=36,right=14,top=30,bottom=39;
-  const plotW=w-left-right,plotH=height-top-bottom;
-  const values=points.map(p=>p.value).filter(Number.isFinite);
-  if(!values.length)return empty(key==='resumes'?`所选区间尚无邮箱简历记录，${short(data.meta.resumeStart)}起有数据。`:'所选区间暂无可绘制的数据。');
-  const max=Math.max(...values,1);let step=Math.max(1,Math.ceil(max/4));
-  if(step>10){const pow=10**Math.floor(Math.log10(step));step=Math.ceil(step/pow)*pow;}
-  const topValue=Math.ceil(max/step)*step;
-  const band=plotW/points.length,barWidth=Math.max(2,Math.min(42,band*.6));
-  const labelEvery=Math.max(1,Math.ceil(points.length/(w<500?6:11)));
-  let svg=`<svg class="chart" viewBox="0 0 ${w} ${height}" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="${esc(label(key))}按日期的记录量，可选择日期查看详情"><title>${esc(label(key))}记录趋势</title><text x="${left}" y="15" fill="#788697" font-size="11">${esc(def(key).unit || '数量')}</text>`;
-  for(let n=0;n<=topValue;n+=step){const y=top+plotH*(1-n/topValue);svg+=`<line x1="${left}" y1="${y}" x2="${w-right}" y2="${y}" stroke="#e8edf2" stroke-dasharray="3 4"/><text x="${left-8}" y="${y+4}" text-anchor="end" fill="#8a96a6" font-size="11">${num(n)}</text>`;}
-  points.forEach((p,i)=>{const x=left+band*(i+.5),value=p.value,y=top+plotH*(1-(value||0)/topValue),fill=p.partial?'#b6c2ce':key==='verifiedHires'?'#328977':'#557994';
-    if(value!==null){const h=value>0?Math.max(2,top+plotH-y):2;svg+=`<g data-action="day" data-date="${p.date}" data-metric="${key}" tabindex="0" role="button" aria-label="${short(p.date)} ${esc(label(key))}${num(value)}${p.partial?'，来源覆盖不足':''}，查看明细"><rect x="${x-barWidth/2}" y="${value>0?y:top+plotH-2}" width="${barWidth}" height="${h}" rx="4" fill="${fill}"/><rect x="${x-band/2}" y="${top-4}" width="${band}" height="${plotH+8}" fill="transparent"/><title>${short(p.date)}：${num(value)}${p.partial?'（BOSS来源覆盖不足）':''}</title>${points.length<=12?`<text x="${x}" y="${Math.max(23,y-8)}" text-anchor="middle" font-size="12" fill="#415269">${num(value)}</text>`:''}</g>`;}
-    else svg+=`<text x="${x}" y="${top+plotH-8}" text-anchor="middle" font-size="12" fill="#a0aabb">—</text>`;
-    if(i%labelEvery===0||i===points.length-1)svg+=`<text x="${x}" y="${height-14}" text-anchor="middle" fill="#788697" font-size="11">${short(p.date)}</text>`;
+// ---------- 基础数据 ----------
+function allDates() { return Object.keys(data.daily).sort(); }
+function curDays() {
+  if (state.mode === 'day') return data.daily[state.day] ? [state.day] : [];
+  return allDates().filter(d => d >= state.from && d <= state.to);
+}
+function zeros() { return PEOPLE.map(() => 0); }
+function inRangeRecords(extra) {
+  return data.invite_records.filter(r =>
+    (state.mode === 'day' ? r.d === state.day : (r.d >= state.from && r.d <= state.to)) &&
+    (!extra || extra(r)));
+}
+// 与正式版 metricRow 相同的聚合规则
+function metricRow(k, person = null) {
+  const ds = curDays();
+  if (!ds.length) return null;
+  const pi = person ? PEOPLE.indexOf(person) : -1;
+  if (k === '发布岗位数' || k === 'BOSS帐号') {
+    for (let i = ds.length - 1; i >= 0; i--) {
+      if (data.daily[ds[i]].has_report) {
+        const v = data.daily[ds[i]].metrics[k] || zeros();
+        return pi >= 0 ? v[pi] : v.reduce((a, b) => a + (b || 0), 0);
+      }
+    }
+    return 0;
+  }
+  if (k === '收到简历数') {
+    let any = false; const vals = zeros();
+    ds.forEach(d => {
+      const v = data.daily[d].metrics[k];
+      if (v) { any = true; v.forEach((x, i) => { vals[i] += x || 0; }); }
+    });
+    if (!any) return null;
+    return pi >= 0 ? vals[pi] : vals.reduce((a, b) => a + (b || 0), 0);
+  }
+  const vals = zeros();
+  ds.forEach(d => {
+    const v = data.daily[d].metrics[k] || zeros();
+    v.forEach((x, i) => { vals[i] += x || 0; });
   });
-  return svg+'</svg>';
+  if (vals.every(x => !x) && ds.every(d => !data.daily[d].metrics[k])) return null;
+  return pi >= 0 ? vals[pi] : vals.reduce((a, b) => a + (b || 0), 0);
+}
+// 批次统计（口径同正式版 batchStats）
+function batchStats(filter = null) {
+  const rs = inRangeRecords(filter);
+  const b = { n: rs.length, arr: 0, noarr: 0, apend: 0, pass: 0, nopass: 0, ppend: 0, onb: 0, quit: 0, noonb: 0, obAll: 0, rv1: 0, rv1bad: 0, rv3: 0, rv7: 0, rs };
+  rs.forEach(r => {
+    if (r.a === '到面') b.arr++; else if (r.a === '未到面') b.noarr++; else b.apend++;
+    if (r.a === '到面') {
+      if (r.ps === '通过') b.pass++; else if (r.ps === '未通过') b.nopass++; else b.ppend++;
+    }
+    if (r.ob === '入职') b.onb++;
+    else if (r.ob === '试岗离职') b.quit++;
+    if (r.ps === '通过' && r.ob === '无') b.noonb++;
+    if (r.ob !== '无') {
+      b.obAll++;
+      if (r.rv1) { b.rv1++; if (/放弃|离职/.test(r.rv1)) b.rv1bad++; }
+      if (r.rv3) b.rv3++;
+      if (r.rv7) b.rv7++;
+    }
+  });
+  return b;
+}
+// 客户聚合（所选区间 · 可再按人过滤）
+function clientsInRange(person = null) {
+  const map = new Map();
+  for (const r of inRangeRecords(person ? (x => x.p === person) : null)) {
+    if (!r.proj) continue;
+    if (!map.has(r.proj)) map.set(r.proj, { name: r.proj, n: 0, arr: 0, noarr: 0, apend: 0, pass: 0, nopass: 0, ppend: 0, onb: 0, quit: 0, jobs: new Set(), people: new Set(), rs: [] });
+    const c = map.get(r.proj);
+    c.n++; c.rs.push(r);
+    if (r.a === '到面') c.arr++; else if (r.a === '未到面') c.noarr++; else c.apend++;
+    if (r.a === '到面' && r.ps === '通过') c.pass++;
+    if (r.ob === '入职') c.onb++;
+    else if (r.ob === '试岗离职') c.quit++;
+    if (r.pos) c.jobs.add(r.pos);
+    c.people.add(r.p);
+  }
+  return [...map.values()].sort((a, b) => b.onb - a.onb || b.n - a.n || a.name.localeCompare(b.name, 'zh-CN'));
+}
+// 人员聚合（批次口径，来自邀约记录）
+function personBatches(person) {
+  return batchStats(r => r.p === person);
+}
+// 逐日趋势序列
+function trendSeries(days) {
+  const mk = keyFn => days.map(d => {
+    const rs = data.invite_records.filter(r => r.d === d);
+    return keyFn(rs);
+  });
+  const hireByDate = days.map(d => {
+    const v = (data.daily[d]?.metrics['核实入职'] || zeros()).reduce((a, b) => a + (b || 0), 0);
+    return v;
+  });
+  return {
+    days,
+    invite: mk(rs => rs.length),
+    arr: mk(rs => rs.filter(r => r.a === '到面').length),
+    pass: mk(rs => rs.filter(r => r.ps === '通过').length),
+    hire: hireByDate
+  };
+}
+function rangeLabel() {
+  if (state.mode === 'day') return pretty(state.day);
+  return `${pretty(state.from)} — ${pretty(state.to)}`;
+}
+function hasAnyData() {
+  return curDays().length > 0 || inRangeRecords().length > 0;
+}
+
+// ---------- 渲染：头部与筛选 ----------
+function setPreset(preset) {
+  const latest = data.meta.latest_report;
+  if (preset === 'latest') { state.mode = 'day'; state.day = latest; }
+  else {
+    state.mode = 'range';
+    const to = latest;
+    let from;
+    if (preset === 'week') from = shift(to, -6);
+    else if (preset === 'month') from = `${to.slice(0, 7)}-01`;
+    else from = data.meta.range.from;
+    if (from < data.meta.range.from) from = data.meta.range.from;
+    state.from = from; state.to = to;
+  }
+  state.preset = preset;
+  const url = new URL(location.href);
+  url.searchParams.set('view', preset);
+  if (preset === 'custom') { url.searchParams.set('start', state.from); url.searchParams.set('end', state.to); }
+  else { url.searchParams.delete('start'); url.searchParams.delete('end'); }
+  history.replaceState(null, '', url);
+}
+function shift(d, n) {
+  const dt = new Date(d + 'T00:00:00Z');
+  dt.setUTCDate(dt.getUTCDate() + n);
+  return dt.toISOString().slice(0, 10);
+}
+
+function renderHeader() {
+  $('date-label').textContent = rangeLabel();
+  document.querySelectorAll('[data-preset]').forEach(b => {
+    const active = b.dataset.preset === state.preset;
+    b.classList.toggle('is-active', active);
+    b.setAttribute('aria-pressed', String(active));
+  });
+  $('custom-range').hidden = state.preset !== 'custom';
+  $('start-date').value = state.mode === 'range' ? state.from : state.day;
+  $('end-date').value = state.mode === 'range' ? state.to : state.day;
+  const days = curDays();
+  const coveredDays = days.filter(d => data.daily[d]?.has_report).length;
+  $('coverage-note').innerHTML = state.mode === 'day'
+    ? `单日日报 · 团队 ${PEOPLE.length} 人 · 数据截至 <b>${short(data.meta.latest_report)}</b>`
+    : `区间覆盖 ${days.length} 天（其中有日报 ${coveredDays} 天）· 团队 ${PEOPLE.length} 人 · 源表生成 ${stamp(data.meta.generated_at)}`;
+  $('meta-status').innerHTML = `<span>日报截至 <strong>${esc(short(data.meta.latest_report))}</strong></span><span>生成 ${esc(stamp(data.meta.generated_at))}</span>`;
+}
+
+// ---------- 渲染：KPI ----------
+function renderKPI(b) {
+  const hireMain = metricRow('核实入职'); // 主表口径（按入职日期）
+  const cards = [
+    { cls: 'metric-card--hire', eyebrow: '入职结果 · 主表口径', label: '核实入职', value: hireMain, note: '按入职日期 · 试岗当天离职已排除', action: 'metric', metric: '核实入职' },
+    { cls: 'metric-card--gold', eyebrow: '面试结果 · 批次口径', label: '面试通过', value: b.pass, note: `已反馈通过率 ${pct(b.pass, b.pass + b.nopass)}`, sub: `结果待补 ${b.ppend}`, action: 'stage', stage: 'passed' },
+    { cls: '', eyebrow: '面试推进 · 批次口径', label: '实际到面', value: b.arr, note: `登记 ${b.n} 人 · 未到面 ${b.noarr}`, sub: `到面待补 ${b.apend}`, action: 'stage', stage: 'attended' },
+    { cls: 'metric-card--steel', eyebrow: '邀约登记 · 批次口径', label: '发出邀约', value: b.n, note: '按登记日期统计', action: 'stage', stage: 'invite' }
+  ];
+  $('kpi-grid').innerHTML = cards.map(c => `
+    <article class="metric-card ${c.cls}">
+      <div class="metric-eyebrow">${c.eyebrow}</div>
+      <div class="metric-label">${c.label}<button class="metric-action" data-action="${c.action}" data-stage="${c.stage || ''}" data-metric="${c.metric || ''}" aria-label="查看${c.label}明细">↗</button></div>
+      <button class="metric-value" data-action="${c.action}" data-stage="${c.stage || ''}" data-metric="${c.metric || ''}" aria-label="${c.label} ${num(c.value)}，查看明细">${num(c.value)}<span class="metric-unit">人</span></button>
+      <div class="metric-note">${c.note}</div>
+      ${c.sub ? `<div class="metric-sub"><b>${c.sub}</b></div>` : ''}
+    </article>`).join('');
+
+  const strip = [
+    { label: '触达曝光', value: (metricRow('我看过') || 0) + (metricRow('看过我') || 0), note: '我看过 + 看过我', metric: '触达曝光' },
+    { label: '互动沟通', value: metricRow('我沟通'), note: 'BOSS 沟通记录', metric: '我沟通' },
+    { label: '收获简历', value: metricRow('收获简历'), note: 'BOSS 后台', metric: '收获简历' },
+    { label: '企微添加数', value: metricRow('企微添加数'), note: '按添加日期', metric: '企微添加数' }
+  ];
+  $('process-strip').innerHTML = strip.map(s => `
+    <button class="process-item" data-action="metric" data-metric="${s.metric}">
+      <span class="process-label">${s.label}</span>
+      <strong class="process-value">${num(s.value)}</strong>
+      <span class="process-note">${s.note}</span>
+    </button>`).join('');
+}
+
+function renderCoverage(b) {
+  const alerts = [];
+  if (b.apend) alerts.push(`到面状态待补 ${b.apend} 条`);
+  if (b.ppend) alerts.push(`面试结果待补 ${b.ppend} 条`);
+  const gapDays = curDays().filter(d => data.daily[d]?.has_report && data.daily[d].covered < PEOPLE.length);
+  if (gapDays.length > 3) {
+    alerts.push(`共 ${gapDays.length} 天 BOSS 明细覆盖不全（${short(gapDays[0])} — ${short(gapDays.at(-1))} 之间，明细见各日）`);
+  } else if (gapDays.length) {
+    alerts.push(`${gapDays.map(d => `${short(d)} 覆盖 ${data.daily[d].covered}/${PEOPLE.length} 人`).join('；')} BOSS 明细覆盖不全`);
+  }
+  if (alerts.length) {
+    $('coverage-alert').hidden = false;
+    $('coverage-alert').innerHTML = `<span class="badge badge--amber">需要确认</span><span>${alerts.map(esc).join('；')}。日报中的 0 保留原值，不据此判断是否工作。</span>`;
+  } else {
+    $('coverage-alert').hidden = true;
+    $('coverage-alert').innerHTML = '';
+  }
+}
+
+// ---------- 渲染：漏斗 ----------
+function funnelLayer({ name, v, w, bg, fg, rate, side, stage }) {
+  const bar = stage
+    ? `<button class="hg-bar" style="width:${w}%;background:${bg};color:${fg}" data-action="stage" data-stage="${stage}" aria-label="查看${name}明细"><span class="bn">${name} ${num(v)}</span>${rate ? `<span class="bp">${rate}</span>` : ''}</button>`
+    : `<div class="hg-bar" style="width:${w}%;background:${bg};color:${fg}"><span class="bn">${name} ${num(v)}</span>${rate ? `<span class="bp">${rate}</span>` : ''}</div>`;
+  return `<div class="hg-layer${stage === 'hired' ? ' hg-waist' : ''}">${bar}<div class="hg-side">${side}</div></div>`;
+}
+function renderFunnel(b) {
+  const tot = k => metricRow(k) || 0;
+  const reach = tot('我看过') + tot('看过我');
+  const comm = tot('我沟通');
+  const resume = tot('收获简历');
+  const wec = tot('企微添加数');
+  const hireMain = metricRow('核实入职');
+  const layers = [
+    { name: '触达曝光', v: reach, w: 100, bg: '#dbe9f8', fg: '#0c447c', rate: null, side: '我看过 + 看过我 · BOSS 平台记录', stage: 'reach' },
+    { name: '互动沟通', v: comm, w: 86, bg: '#c5dcf2', fg: '#0c447c', rate: pct(comm, reach), side: '我沟通 · BOSS 记录', stage: 'comm' },
+    { name: '收获简历', v: resume, w: 72, bg: '#a9cceb', fg: '#0c447c', rate: pct(resume, comm), side: 'BOSS 后台收获简历', stage: 'resume' },
+    { name: '企微添加数', v: wec, w: 60, bg: '#93bde4', fg: '#ffffff', rate: pct(wec, resume), side: '企微添加 · 不分摊到项目', stage: 'wecom' },
+    { name: '发出邀约', v: b.n, w: 48, bg: '#85b7e3', fg: '#ffffff', rate: pct(b.n, wec), side: '登记批次 · 跨源仅作量级参考', stage: 'invite' },
+    { name: '实际到面', v: b.arr, w: 36, bg: '#5d9fd6', fg: '#ffffff', rate: pct(b.arr, b.n), side: `未到面 <b>${b.noarr}</b> · 到面待补 <b>${b.apend}</b>`, stage: 'attended' },
+    { name: '面试通过', v: b.pass, w: 26, bg: '#3a84c4', fg: '#ffffff', rate: pct(b.pass, b.arr), side: `未通过 <b>${b.nopass}</b> · 结果待补 <b>${b.ppend}</b>`, stage: 'passed' }
+  ];
+  let html = layers.map(funnelLayer).join('');
+  html += funnelLayer({
+    name: '★入职', v: b.onb, w: 15, bg: '#0f6e56', fg: '#ffffff', rate: pct(b.onb, b.pass),
+    side: `同批已入职（含试岗离职 ${b.quit}）· 主表口径核实入职 <b>${num(hireMain)}</b> 人（按入职日期）`, stage: 'hired'
+  });
+  html += `<div class="hg-gap"><div class="line"></div><div class="gt">入职后留存跟踪 · 回访覆盖同批入职者</div></div>`;
+  const rvSide = (v, bad) => {
+    let s = `已回访 <b>${v}</b>/入职 ${b.obAll}`;
+    if (bad) s += ` · 异常 <b>${b.rv1bad}</b>（试岗放弃）`;
+    if (b.obAll - v > 0) s += ` · 待补 <b>${b.obAll - v}</b>`;
+    if (b.obAll === 0) s = '所选范围内暂无入职';
+    return s;
+  };
+  html += funnelLayer({ name: '入职1天回访', v: b.rv1, w: 26, bg: '#d6f1e3', fg: '#0a5c44', side: rvSide(b.rv1, true), stage: 'rv1' });
+  html += funnelLayer({ name: '3天回访', v: b.rv3, w: 38, bg: '#bfe8d4', fg: '#0a5c44', side: rvSide(b.rv3), stage: 'rv3' });
+  html += funnelLayer({ name: '7天回访', v: b.rv7, w: 52, bg: '#a9dfc4', fg: '#0a5c44', side: rvSide(b.rv7), stage: 'rv7' });
+  html += funnelLayer({ name: '入职30天', w: 68, side: '待建字段：邀约表新增「入职30天」', shell: true });
+  html += funnelLayer({ name: '老带新', w: 84, side: '待建字段：邀约表新增「老带新」', shell: true });
+  $('funnel').innerHTML = html;
+  const fb = b.pass + b.nopass;
+  $('funnel-note').innerHTML = `<b>口径</b>：触达→收获简历→企微→邀约各层来自不同来源（BOSS 后台 / 企微 / 邀约登记），非同一批候选人，各层转化率仅作量级参考；<b>邀约→到面→通过→入职为同一批登记人选的真实追踪，转化率可比</b>。已反馈面试通过率 ${pct(b.pass, fb)}（${b.pass}/${fb}，未反馈不计分母）。点击各层查看人员与候选人明细。`;
+}
+
+// ---------- 渲染：图表 ----------
+function baseGrid() {
+  return { left: 8, right: 24, top: 12, bottom: 8, containLabel: true };
+}
+function renderClientChart() {
+  const el = $('client-chart');
+  if (!charts.client) charts.client = echarts.init(el);
+  const clients = clientsInRange();
+  if (!clients.length) {
+    charts.client.clear();
+    el.innerHTML = '<div class="empty-state" style="padding-top:120px"><strong>暂无项目记录</strong><p>所选区间的邀约登记没有客户项目数据。</p></div>';
+    return;
+  }
+  const names = clients.map(c => c.name).reverse();
+  const other = clients.map(c => Math.max(0, c.n - c.arr - (c.n - c.arr))).reverse(); // 占位
+  const segRemainder = clients.map(c => Math.max(0, c.n - c.arr - c.pass + c.arr - c.arr)).reverse();
+  const remain = clients.map(c => Math.max(0, c.n - c.arr)).reverse();
+  const passRest = clients.map(c => Math.max(0, c.arr - c.pass)).reverse();
+  const onb = clients.map(c => c.onb).reverse();
+  const passed = clients.map(c => c.pass).reverse();
+  const arrived = clients.map(c => c.arr).reverse();
+  const height = Math.max(240, clients.length * 30 + 60);
+  el.style.height = height + 'px';
+  charts.client.resize();
+  charts.client.setOption({
+    grid: { left: 8, right: 40, top: 30, bottom: 8, containLabel: true },
+    legend: { top: 0, right: 0, itemWidth: 10, itemHeight: 10, textStyle: { fontSize: 11, color: '#5a6b81' } },
+    tooltip: {
+      trigger: 'item', confine: true,
+      formatter: p => {
+        const c = clients[clients.length - 1 - p.dataIndex];
+        return `<b>${esc(c.name)}</b><br/>发出邀约 ${c.n} · 实际到面 ${c.arr}<br/>面试通过 ${c.pass} · 入职 ${c.onb}${c.quit ? ` · 试岗离职 ${c.quit}` : ''}<br/>到面率 ${pct(c.arr, c.n)} · 已反馈通过率 ${pct(c.pass, c.pass + c.nopass)}`;
+      }
+    },
+    xAxis: { type: 'value', splitLine: { lineStyle: { color: '#eef1f5' } }, axisLabel: { fontSize: 11, color: '#8a96a6' } },
+    yAxis: {
+      type: 'category', data: names,
+      axisLabel: { fontSize: 12, color: '#172b43', width: 90, overflow: 'truncate' },
+      axisTick: { show: false }, axisLine: { lineStyle: { color: '#d4dae3' } }
+    },
+    series: [
+      { name: '到面未通过', type: 'bar', stack: 't', itemStyle: { color: '#9cc3e8' }, data: passRest.map((v, i) => Math.max(0, arrived[i] - passed[i])), barMaxWidth: 16, cursor: 'pointer' },
+      { name: '面试通过未入职', type: 'bar', stack: 't', itemStyle: { color: '#3a84c4' }, data: passed.map((v, i) => Math.max(0, v - onb[i])), barMaxWidth: 16, cursor: 'pointer' },
+      { name: '核实入职', type: 'bar', stack: 't', itemStyle: { color: '#0f6e56' }, data: onb, barMaxWidth: 16, label: { show: true, position: 'right', fontSize: 11, color: '#0f6e56', fontWeight: 600, formatter: p => `${p.value}/${clients[clients.length - 1 - p.dataIndex].n}`, }, cursor: 'pointer' },
+      { name: '未到面/待补', type: 'bar', stack: 't', itemStyle: { color: '#d7dee8' }, data: remain, barMaxWidth: 16, cursor: 'pointer' }
+    ]
+  }, true);
+  charts.client.off('click');
+  charts.client.on('click', p => {
+    if (p.dataIndex >= 0) showDetail({ type: 'client', client: clients[clients.length - 1 - p.dataIndex].name });
+  });
+}
+function renderPeopleChart() {
+  const el = $('people-chart');
+  if (!charts.people) charts.people = echarts.init(el);
+  const stats = PEOPLE.map(p => ({ p, b: personBatches(p), hireMain: metricRow('核实入职', p) }))
+    .sort((a, b) => (b.hireMain || 0) - (a.hireMain || 0) || b.b.arr - a.b.arr);
+  const names = stats.map(s => s.p).reverse();
+  const hire = stats.map(s => s.hireMain || 0).reverse();
+  const pass = stats.map(s => s.b.pass).reverse();
+  const arr = stats.map(s => s.b.arr).reverse();
+  charts.people.setOption({
+    grid: { left: 8, right: 40, top: 30, bottom: 8, containLabel: true },
+    legend: { top: 0, right: 0, itemWidth: 10, itemHeight: 10, textStyle: { fontSize: 11, color: '#5a6b81' } },
+    tooltip: {
+      trigger: 'axis', confine: true,
+      formatter: ps => {
+        const s = stats[stats.length - 1 - ps[0].dataIndex];
+        const fb = s.b.pass + s.b.nopass;
+        return `<b>${esc(s.p)}</b><br/>核实入职（主表） ${s.hireMain || 0} · 批次入职 ${s.b.onb}<br/>面试通过 ${s.b.pass}${fb ? ` · 已反馈通过率 ${pct(s.b.pass, fb)}` : ''}<br/>实际到面 ${s.b.arr} · 发出邀约 ${s.b.n}<br/>企微添加 ${num(metricRow('企微添加数', s.p))} · 我沟通 ${num(metricRow('我沟通', s.p))}`;
+      }
+    },
+    xAxis: { type: 'value', splitLine: { lineStyle: { color: '#eef1f5' } }, axisLabel: { fontSize: 11, color: '#8a96a6' }, minInterval: 1 },
+    yAxis: {
+      type: 'category', data: names,
+      axisLabel: { fontSize: 12, color: '#172b43' },
+      axisTick: { show: false }, axisLine: { lineStyle: { color: '#d4dae3' } }
+    },
+    series: [
+      { name: '实际到面', type: 'bar', data: arr, itemStyle: { color: '#9cc3e8', borderRadius: [0, 4, 4, 0] }, barGap: '-100%', barMaxWidth: 12, zIndex: 1, cursor: 'pointer' },
+      { name: '面试通过', type: 'bar', data: pass, itemStyle: { color: '#3a84c4', borderRadius: [0, 4, 4, 0] }, barGap: '-100%', barMaxWidth: 8, zIndex: 2, cursor: 'pointer' },
+      { name: '核实入职', type: 'bar', data: hire, itemStyle: { color: '#0f6e56', borderRadius: [0, 4, 4, 0] }, barMaxWidth: 12, zIndex: 3, label: { show: true, position: 'right', fontSize: 11, fontWeight: 600, color: '#0f6e56' }, cursor: 'pointer' }
+    ]
+  }, true);
+  charts.people.off('click');
+  charts.people.on('click', p => {
+    if (p.dataIndex >= 0) showDetail({ type: 'person', person: stats[stats.length - 1 - p.dataIndex].p });
+  });
 }
 function renderTrend() {
-  const key=sortKey(state.trend);
-  let from=state.start,to=state.end;
-  if(from===to)from=shiftDate(to,-6);
-  const points=trendPoints(data,from,to,key);
-  $('trend-area').innerHTML=points.length?chartMarkup(points,key,$('trend-area').getBoundingClientRect().width):empty('当前区间暂无日报记录。');
-  const context=state.start===state.end?`展示截至${short(to)}的近7日记录。`:`展示所选区间内已有日报覆盖的日期。`;
-  $('trend-note').textContent=context+(key==='attended'?' 按登记日期查看当前到面结果，不代表当天实际发生到面。':key==='resumes'?` 邮箱口径，${short(data.meta.resumeStart)}之前为缺失。`:key==='verifiedHires'?' 按网招入职日期统计，试岗当天离职已排除。':key==='wecomAdds'?' 按企微添加日期统计。':' 灰色柱表示BOSS原始记录覆盖不足。')+' 点击柱形查看当日构成。';
-}
-
-function simpleTable(headers,rows) {
-  return `<div class="detail-table-wrap"><table class="detail-table"><thead><tr>${headers.map(x=>`<th>${esc(x)}</th>`).join('')}</tr></thead><tbody>${rows.map(row=>`<tr>${row.map((x,i)=>`<${i===0?'th':'td'}>${x}</${i===0?'th':'td'}>`).join('')}</tr>`).join('')}</tbody></table></div>`;
-}
-function showDetail(detail) {
-  state.detail=detail;renderDetail();
-  const dialog=$('detail-dialog');if(!dialog.open){state.opener=document.activeElement;dialog.showModal();document.documentElement.style.overflow='hidden';}
-}
-function renderDetail() {
-  const d=state.detail;if(!d)return;
-  const team=aggregateDaily(data,state.start,state.end);
-  let title='',kicker='',subtitle=span(),body='';
-  if(d.type==='person') {
-    const person=data.recruiters.find(p=>p.id===d.id);if(!person)return;
-    title=person.name;kicker='人员业绩';
-    const a=aggregateDaily(data,state.start,state.end,d.id),v=a.values;
-    const projects=projectsForPeriod(data,state.start,state.end,d.id);
-    const i=aggregateInvites(data,state.start,state.end,{recruiterId:d.id});
-    body=`<div class="detail-grid">${stat('核实入职',v.verifiedHires,'按入职日期')}${stat('面试通过',v.passed,'登记批次结果')}${stat('实际到面',v.attended,'登记批次结果')}${stat('发出邀约',v.invitations,'按登记日期')}</div><h3>完整日报</h3>${simpleTable(['指标','数量','说明'],FULL_METRICS.map(k=>[esc(label(k)),num(v[k]),esc(coverageText(a,k)||dateBasis(k))]))}<h3>项目分布</h3>${projects.length?simpleTable(['项目','核实入职','到面','收到简历'],projects.map(p=>[`<button class="text-link" data-action="project" data-client="${esc(p.client)}" data-id="${d.id}">${esc(p.client)} ↗</button>`,projectCell(p,'verifiedHires'),projectCell(p,'attended'),projectCell(p,'resumes')])):empty('本区间补充明细没有该人员的项目记录。')}<div class="info-callout"><strong>面试记录反馈</strong><p>到面状态未填${i.statusUnknown}条；已到面但结果未填${i.resultUnknown}条。${i.feedbackCount?`已反馈通过率${(i.passRate*100).toFixed(1)}%（${i.passed}/${i.feedbackCount}）。`:'尚无可计算已反馈通过率的记录。'}</p></div>`;
-  } else if(d.type==='project') {
-    const projects=projectsForPeriod(data,state.start,state.end,d.id||null),p=projects.find(p=>p.client===d.client);
-    title=d.client;kicker=d.id?`${names([d.id])} · 项目详情`:'项目详情';
-    if(!p)body=empty('该项目在当前所选区间没有补充明细记录。');
-    else {
-      const people=p.recruiterIds.map(id=>{const subset=projectsForPeriod(data,state.start,state.end,id).find(x=>x.client===p.client);return {id,p:subset};});
-      body=`<p class="source-note">涉及人员：${esc(names(p.recruiterIds))}</p>
-      <div class="detail-grid">${projectStat(p,'verifiedHires','按入职日期')}${projectStat(p,'passed','登记批次结果')}${projectStat(p,'attended','登记批次结果')}${projectStat(p,'invitations','按登记日期')}</div>
-      <div class="info-callout"><strong>记录范围</strong><p>我沟通：${projectCell(p,'conversations')}；收到简历：${projectCell(p,'resumes')}（${short(data.meta.resumeStart)}起有数据）。各来源按客户汇总，不表示同一批候选人的端到端转化。</p>${!p.sourcePresence.invites?'<p>邀约跟进表在本区间尚无该项目记录，后续进展需要核对。</p>':''}</div>
-      <h3>人员构成</h3>${simpleTable(['招聘专员','我沟通','收到简历','到面','核实入职'],people.map(x=>[`<button class="text-link" data-action="person" data-id="${x.id}">${esc(names([x.id]))} ↗</button>`,projectCell(x.p,'conversations'),projectCell(x.p,'resumes'),projectCell(x.p,'attended'),projectCell(x.p,'verifiedHires')]))}
-      <h3>来源岗位名称</h3><div class="job-tags">${p.jobs.map(j=>`<span class="badge badge--blue">${esc(j)}</span>`).join('')}</div><p class="source-note">保留各表原名称，尚未把不同岗位写法合并。企微添加无可靠项目字段，不在这里分摊。</p>
-      <h3>面试状态</h3>${p.sourcePresence.invites?simpleTable(['状态','数量'],[['已到面',projectCell(p,'attended')],['明确未到面',projectCell(p,'noShows')],['到面状态未填',projectCell(p,'statusUnknown')],['到面后通过',projectCell(p,'passed')],['到面后不通过',projectCell(p,'failed')],['到面后结果未填',projectCell(p,'resultUnknown')]]):'<p class="source-note">所选区间的邀约跟进表暂无该项目记录。</p>'}
-      <h3>入职核对</h3>${p.sourcePresence.hires?`<p>上报${p.reported}条，核实${p.verifiedHires}条，试岗当天离职排除${p.trialExcluded}条。满一天和持续在职状态尚无完整信息。</p>`:'<p class="source-note">所选区间的入职提交表暂无该项目记录。</p>'}`;
-    }
-  } else if(d.type==='metric'||d.type==='day') {
-    const key=d.metric,from=d.type==='day'?d.date:state.start,to=d.type==='day'?d.date:state.end;
-    const a=aggregateDaily(data,from,to,d.id||null);const person=d.id?data.recruiters.find(r=>r.id===d.id):null;
-    title=label(key);kicker=person?`${person.name} · 指标详情`:'指标详情';subtitle=span(from,to);
-    body=`<div class="detail-grid">${stat(label(key),a.values[key],dateBasis(key))}</div><div class="info-callout"><strong>统计口径</strong><p>${esc(def(key).note || dateBasis(key))}</p>${coverageText(a,key)?`<p>${esc(coverageText(a,key))}。</p>`:''}</div>`;
-    if(!person)body+=`<h3>人员构成</h3>${simpleTable(['招聘专员','数量'],data.recruiters.map(r=>[d.type==='day'?esc(r.name):`<button class="text-link" data-action="person" data-id="${r.id}">${esc(r.name)} ↗</button>`,num(aggregateDaily(data,from,to,r.id).values[key])]))}`;
-    const pointRows=trendPoints(data,from,to,key,d.id||null).map(p=>[esc(short(p.date)),num(p.value),p.partial?'BOSS来源覆盖不足':p.value===null?'无数据':COHORT_METRICS.has(key)?'该日登记批次的当前状态':'按记录日期']);
-    body+=`<h3>按日期查看</h3>${simpleTable(['日期','数量','说明'],pointRows)}<p class="source-note">来源：招聘日报。岗位数与账号在区间汇总中显示末日值，逐日记录不相加为不同岗位或账号总数。</p>`;
-    if(key==='verifiedHires'){const h=aggregateHires(data,from,to,{recruiterId:d.id||null});body+=`<div class="info-callout"><strong>入职明细核对</strong><p>上报${h.reported}条，核实${h.verified}条，试岗当天离职排除${h.trialExcluded}条。客服确认入职不等同持续在职或满一天。</p></div>`;}
-    if(['passed','attended','pending','noShows','invitations'].includes(key)){const i=aggregateInvites(data,from,to,{recruiterId:d.id||null});body+=`<h3>同一登记批次的状态</h3>${simpleTable(['状态','数量'],[['发出邀约',num(i.invitations)],['已到面',num(i.attended)],['未到面',num(i.noShows)],['到面状态未填',num(i.statusUnknown)],['已到面通过',num(i.passed)],['已到面不通过',num(i.failed)],['已到面结果未填',num(i.resultUnknown)]] )}`;}
-  } else if(d.type==='interview') {
-    const i=aggregateInvites(data,state.start,state.end);title='面试进展';kicker='登记批次详情';
-    body=`<p class="source-note">${span()}登记的候选人，状态以本次源文件为准。</p><div class="detail-grid">${stat('发出邀约',i.invitations)}${stat('已到面',i.attended)}${stat('已通过',i.passed)}${stat('已反馈样本',i.feedbackCount)}</div>${simpleTable(['状态','数量'],[['未到面',num(i.noShows)],['到面状态未填',num(i.statusUnknown)],['到面后不通过',num(i.failed)],['到面后结果未填',num(i.resultUnknown)]])}<h3>按人员核对</h3>${simpleTable(['招聘专员','到面状态未填','面试结果未填'],data.recruiters.map(r=>{const x=aggregateInvites(data,state.start,state.end,{recruiterId:r.id});return [esc(r.name),num(x.statusUnknown),num(x.resultUnknown)];}))}<div class="info-callout"><strong>已反馈面试通过率</strong><p>${i.feedbackCount?`${i.passed}÷${i.feedbackCount}＝${(i.passRate*100).toFixed(1)}%。`:'暂无已反馈样本。'}分母仅包括已到面且结果明确为通过或不通过的记录。状态未填写的记录不自动当作未到面或面试失败。</p></div>`;
-  } else {
-    title='指标与数据说明';kicker='统计口径';subtitle=`日报截至${pretty(data.meta.periodEnd)}`;
-    body=`<div class="info-callout"><strong>一份日报，两类业务日期</strong><p>到面、通过按邀约表的登记日期统计，状态使用当前源文件的记录。核实入职按网招入职日期统计。两者不能直接相除为同批次转化率。</p></div><h3>指标定义</h3>${simpleTable(['指标','说明'],data.metricDefinitions.map(m=>[esc(m.label),esc(m.note || m.dateBasis)]))}<h3>本版数据范围</h3><ul class="detail-list"><li><b>日报：${data.meta.periodStart}至${data.meta.periodEnd}</b><span>源表生成于${sourceStamp(data.meta.sourceGeneratedAt)}。</span></li><li><b>收到简历从${data.meta.resumeStart}起统计</b><span>前期缺失保留“—”，邮箱记录与BOSS收获简历不相加。</span></li><li><b>岗位、账号保留日报口径</b><span>跨日显示末日值。账号规则存在例外，暂不据此排名或推算利用率。</span></li><li><b>来源没有记录与明确为0分别解释</b><span>人员主表保留日报数字；BOSS来源覆盖不足会单独提示。</span></li><li><b>更新方式</b><span>维护人员提交新版Excel并核对后，更新到同一网址。页面展示已发布版本，未同步的Excel修改不会自动显示。</span></li></ul><h3>来源</h3><p>${esc(data.meta.sourceWorkbook || '创新招聘组数据20261018.xlsx')}</p><p class="source-note">招聘日报为主展示；BOSS数据、收到简历、企微添加、邀约信息跟进表、入职信息提交表为补充。网页只包含汇总，不包含候选人身份、联系方式和原始简历。</p>`;
+  const el = $('trend-chart');
+  if (!charts.trend) charts.trend = echarts.init(el);
+  let days = curDays();
+  if (days.length < 2) {
+    const to = state.mode === 'day' ? state.day : state.to;
+    days = allDates().filter(d => d <= to).slice(-14);
   }
-  $('detail-kicker').textContent=kicker;$('detail-title').textContent=title;$('detail-subtitle').textContent=subtitle;$('detail-body').innerHTML=body;
+  const s = trendSeries(days);
+  $('trend-note').textContent = days.length
+    ? `展示 ${short(days[0])} — ${short(days.at(-1))} 共 ${days.length} 天。邀约/到面/通过按登记批次，入职按入职日期（主表口径）。点击数据点查看当日明细。`
+    : '所选区间暂无日报覆盖。';
+  charts.trend.setOption({
+    grid: baseGrid(),
+    legend: { top: 0, right: 0, itemWidth: 14, itemHeight: 3, textStyle: { fontSize: 11, color: '#5a6b81' } },
+    tooltip: {
+      trigger: 'axis', confine: true,
+      formatter: ps => `<b>${pretty(ps[0].axisValue)}</b><br/>` + ps.map(p => `${p.marker}${p.seriesName} ${p.value ?? 0}`).join('<br/>')
+    },
+    xAxis: { type: 'category', data: s.days, axisLabel: { fontSize: 11, color: '#8a96a6', formatter: short }, boundaryGap: false, axisLine: { lineStyle: { color: '#d4dae3' } } },
+    yAxis: { type: 'value', minInterval: 1, splitLine: { lineStyle: { color: '#eef1f5' } }, axisLabel: { fontSize: 11, color: '#8a96a6' } },
+    series: [
+      { name: '发出邀约', type: 'line', data: s.invite, smooth: true, symbolSize: 6, lineStyle: { width: 2.5, color: '#3a84c4' }, itemStyle: { color: '#3a84c4' } },
+      { name: '实际到面', type: 'line', data: s.arr, smooth: true, symbolSize: 6, lineStyle: { width: 2.5, color: '#5d9fd6' }, itemStyle: { color: '#5d9fd6' } },
+      { name: '面试通过', type: 'line', data: s.pass, smooth: true, symbolSize: 6, lineStyle: { width: 2.5, color: '#d9a441' }, itemStyle: { color: '#d9a441' } },
+      { name: '核实入职', type: 'line', data: s.hire, smooth: true, symbolSize: 6, lineStyle: { width: 2.5, color: '#0f6e56' }, itemStyle: { color: '#0f6e56' }, areaStyle: { color: 'rgba(15,110,86,.08)' } }
+    ]
+  }, true);
+  charts.trend.off('click');
+  charts.trend.on('click', p => {
+    if (p.componentType === 'series') showDetail({ type: 'day', date: p.axisValue });
+  });
 }
 
-function render() {
-  const agg=aggregateDaily(data,state.start,state.end);
-  renderHeader(agg);renderOverview(agg);renderPeople(agg);renderInterviews(agg);renderAttention(agg);renderProjects();renderTrend();
-  $('source-footer').innerHTML=`<span>来源：招聘日报及5张补充明细</span><span>源表 ${esc(sourceStamp(data.meta.sourceGeneratedAt))}</span><span>网页数据更新 ${esc(sourceStamp(data.meta.websiteUpdatedAt))}</span>`;
-  if(state.detail)renderDetail();
+// ---------- 渲染：待核事项 ----------
+function renderAttention(b) {
+  const items = [];
+  if (b.apend) items.push(['到面状态待补', `${b.apend} 条登记为「待面试/待定」`, '不等同未来预约，需要业务员确认实际是否到面。', 'attended']);
+  if (b.ppend) items.push(['面试结果待补', `${b.ppend} 条已到面但结果未填`, '尚未记录通过或不通过，影响已反馈通过率的分母。', 'passed']);
+  if (b.noonb) items.push(['通过未入职', `${b.noonb} 条面试通过但暂无入职记录`, '可能仍在安排入职，也可能已放弃，需要跟进确认。', 'passed']);
+  if (b.quit) items.push(['试岗离职', `${b.quit} 条试岗当天离职`, '不计入核实入职，单独列出。', 'hired']);
+  if (b.obAll && b.obAll - b.rv1 > 0) items.push(['1天回访待补', `${b.obAll - b.rv1} 条入职未登记 1 天回访`, '回访覆盖同批入职者，缺失计入待补。', 'rv1']);
+  const n = items.length;
+  $('attention').innerHTML = `<details><summary><span>数据待核对</span><span class="badge ${n ? 'badge--amber' : 'badge--blue'}">${n ? `${n} 类待确认事项` : '查看口径说明'}</span><span class="subtle">${esc(rangeLabel())}</span></summary><div class="attention-content">${items.length ? `<ul class="detail-list">${items.map(([t, d, note, stage]) => `<li><b>${t}：${esc(d)}</b><span>${esc(note)} <button class="text-link" data-action="stage" data-stage="${stage}">查看明细 ↗</button></span></li>`).join('')}</ul>` : '<p class="source-note">所选区间未发现到面状态或面试结果待补项。记录是否完整仍以实际填报为准。</p>'}</div></details>`;
 }
+
+// ---------- 弹窗 ----------
+function openDialog() {
+  const dialog = $('detail-dialog');
+  if (!dialog.open) {
+    state.opener = document.activeElement;
+    dialog.showModal();
+    document.documentElement.style.overflow = 'hidden';
+  }
+}
+function closeDialog() {
+  const dialog = $('detail-dialog');
+  if (dialog.open) dialog.close();
+}
+function setDetail(kicker, title, subtitle, body) {
+  $('detail-kicker').textContent = kicker;
+  $('detail-title').textContent = title;
+  $('detail-subtitle').textContent = subtitle;
+  $('detail-body').innerHTML = body;
+  openDialog();
+}
+function stat(labelText, value, note = '') {
+  return `<div class="detail-stat"><span class="stat-label">${esc(labelText)}</span><strong class="stat-value">${num(value)}</strong>${note ? `<small>${esc(note)}</small>` : ''}</div>`;
+}
+function simpleTable(headers, rows) {
+  return `<div class="detail-table-wrap"><table class="detail-table"><thead><tr>${headers.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${row.map((x, i) => `<${i === 0 ? 'th scope="row"' : 'td'}>${x}</${i === 0 ? 'th' : 'td'}>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+}
+function personLink(name) {
+  return `<button class="text-link" data-action="person" data-person="${esc(name)}">${esc(name)} ↗</button>`;
+}
+function clientLink(name) {
+  return `<button class="text-link" data-action="client" data-client="${esc(name)}">${esc(name)} ↗</button>`;
+}
+function statusBlock(title, parts, sum) {
+  const content = parts.map(p => `<span class="legend-item"><span class="dot" style="background:${p.color}"></span>${p.label}<strong>${num(p.value)}</strong></span>`).join('');
+  const track = sum ? parts.filter(p => p.value > 0).map(p => `<span class="status-segment" style="width:${p.value / sum * 100}%;background:${p.color}"></span>`).join('') : '<span class="status-segment status-segment--empty" style="width:100%"></span>';
+  return `<div class="status-row"><div class="status-title"><strong>${title}</strong><span class="muted">共 ${num(sum)} 人</span></div><div class="status-track" aria-hidden="true">${track}</div><div class="legend">${content}</div></div>`;
+}
+function recordsTable(rs, opts = {}) {
+  if (!rs.length) return '<p class="source-note">所选范围内暂无候选人记录。</p>';
+  return `<div class="detail-table-wrap"><table class="detail-table"><thead><tr>${['登记日', '候选人', '岗位', '项目', '专员', '到面状态', '面试结果', '入职', '实际面试日'].map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rs.map(r => `<tr><th scope="row">${short(r.d)}</th><td>${esc(r.cand)}</td><td>${esc(r.pos)}</td><td>${opts.noClientLink ? esc(r.proj) : clientLink(r.proj)}</td><td>${personLink(r.p)}</td><td>${r.a === '到面' ? '<span class="badge badge--teal">到面</span>' : r.a === '未到面' ? '<span class="badge badge--gray">未到面</span>' : '<span class="badge badge--amber">待补</span>'}</td><td>${r.ps === '通过' ? '<span class="badge badge--teal">通过</span>' : r.ps === '未通过' ? '<span class="badge badge--gray">未通过</span>' : '<span class="badge badge--amber">待补</span>'}</td><td>${r.ob === '入职' ? '<span class="badge badge--teal">入职</span>' : r.ob === '试岗离职' ? '<span class="badge badge--amber">试岗离职</span>' : '—'}</td><td>${r.iv ? short(r.iv) : '—'}</td></tr>`).join('')}</tbody></table></div>`;
+}
+function statusBadge(r) { return r; }
+
+function showDetail(d) {
+  const subtitle = rangeLabel();
+  if (d.type === 'metric') {
+    const k = d.metric;
+    const person = d.person || null;
+    const v = metricRow(k, person);
+    const title = person ? `${person} · ${k}` : k;
+    const kicker = person ? '人员 · 指标详情' : '指标详情';
+    let body = `<div class="detail-grid">${stat(k, v, METRIC_NOTES[k] || '')}</div>`;
+    if (!person) {
+      body += `<h3>人员构成</h3>${simpleTable(['招聘专员', '数量'], PEOPLE.map(p => [personLink(p), num(metricRow(k, p))]))}`;
+    }
+    const days = curDays();
+    if (days.length > 1) {
+      body += `<h3>按日查看</h3>${simpleTable(['日期', '数量'], days.map(dd => [pretty(dd), num(metricRow(k) === null ? null : (data.daily[dd].metrics[k] || zeros()).reduce((a, b) => a + (b || 0), 0))]))}`;
+    }
+    body += `<div class="info-callout"><strong>统计口径</strong><p>${esc(METRIC_NOTES[k] || '')}</p></div>`;
+    setDetail(kicker, title, subtitle, body);
+  } else if (d.type === 'stage') {
+    renderStage(d.stage, subtitle);
+  } else if (d.type === 'person') {
+    renderPerson(d.person, subtitle);
+  } else if (d.type === 'client') {
+    renderClient(d.client, subtitle);
+  } else if (d.type === 'day') {
+    renderDay(d.date);
+  } else if (d.type === 'methodology') {
+    renderMethodology();
+  }
+}
+
+function renderStage(stage, subtitle) {
+  const b = batchStats();
+  const meta = {
+    invite: { title: '发出邀约', kicker: '批次详情' },
+    attended: { title: '实际到面', kicker: '批次详情' },
+    passed: { title: '面试通过', kicker: '批次详情' },
+    hired: { title: '入职', kicker: '批次详情' },
+    reach: { title: '触达曝光', kicker: '平台指标' },
+    comm: { title: '互动沟通', kicker: '平台指标' },
+    resume: { title: '收获简历', kicker: '平台指标' },
+    wecom: { title: '企微添加数', kicker: '平台指标' },
+    rv1: { title: '入职 1 天回访', kicker: '留存跟踪' },
+    rv3: { title: '入职 3 天回访', kicker: '留存跟踪' },
+    rv7: { title: '入职 7 天回访', kicker: '留存跟踪' }
+  }[stage] || { title: stage, kicker: '详情' };
+
+  if (['reach', 'comm', 'resume', 'wecom'].includes(stage)) {
+    const key = { reach: null, comm: '我沟通', resume: '收获简历', wecom: '企微添加数' }[stage];
+    if (stage === 'reach') {
+      let body = `<div class="detail-grid">${stat('触达曝光', (metricRow('我看过') || 0) + (metricRow('看过我') || 0), '我看过 + 看过我')}</div>`;
+      body += `<h3>人员构成</h3>${simpleTable(['招聘专员', '我看过', '看过我', '合计'], PEOPLE.map(p => [personLink(p), num(metricRow('我看过', p)), num(metricRow('看过我', p)), num((metricRow('我看过', p) || 0) + (metricRow('看过我', p) || 0))]))}`;
+      setDetail(meta.kicker, meta.title, subtitle, body);
+      return;
+    }
+    showDetail({ type: 'metric', metric: key });
+    return;
+  }
+
+  if (stage === 'rv1' || stage === 'rv3' || stage === 'rv7') {
+    const key = stage;
+    const rs = inRangeRecords(r => r.ob !== '无' && r[key]);
+    let body = `<div class="detail-grid">${stat(meta.title, rs.length, `入职 ${b.obAll} 人中已回访`)}${stat('入职总数（批次）', b.obAll, '含试岗离职')}</div>`;
+    if (b.obAll - rs.length > 0) body += `<div class="info-callout"><strong>待补</strong><p>另有 ${b.obAll - rs.length} 条入职尚未登记该节点回访。</p></div>`;
+    body += `<h3>回访明细</h3>${simpleTable(['候选人', '项目', '专员', '入职状态', '1天', '3天', '7天'], inRangeRecords(r => r.ob !== '无').map(r => [esc(r.cand), clientLink(r.proj), personLink(r.p), r.ob === '入职' ? '入职' : '试岗离职', esc(r.rv1 || '待补'), esc(r.rv3 || '待补'), esc(r.rv7 || '待补')]))}`;
+    setDetail(meta.kicker, meta.title, subtitle, body);
+    return;
+  }
+
+  // 批次阶段：invite / attended / passed / hired
+  const filter = { invite: null, attended: r => r.a === '到面', passed: r => r.a === '到面' && r.ps === '通过', hired: r => r.ob === '入职' }[stage];
+  const rs = inRangeRecords(filter || undefined);
+  let body = '';
+  if (stage === 'invite') {
+    body += `<div class="detail-grid">${stat('发出邀约', b.n, '按登记日期')}${stat('已到面', b.arr)}${stat('未到面', b.noarr)}${stat('到面待补', b.apend)}</div>`;
+    body += statusBlock('邀约后的到面状态', [
+      { label: '已到面', value: b.arr, color: '#3a84c4' },
+      { label: '未到面', value: b.noarr, color: '#d7dee8' },
+      { label: '状态待补', value: b.apend, color: '#d9a441' }
+    ], b.n);
+  } else if (stage === 'attended') {
+    body += `<div class="detail-grid">${stat('实际到面', b.arr, '同一登记批次')}${stat('面试通过', b.pass)}${stat('未通过', b.nopass)}${stat('结果待补', b.ppend)}</div>`;
+    body += statusBlock('已到面的面试结果', [
+      { label: '通过', value: b.pass, color: '#0f6e56' },
+      { label: '未通过', value: b.nopass, color: '#d7dee8' },
+      { label: '结果待补', value: b.ppend, color: '#d9a441' }
+    ], b.arr);
+    const fb = b.pass + b.nopass;
+    body += `<div class="info-callout"><strong>已反馈面试通过率</strong><p>${fb ? `${b.pass} ÷ ${fb} ＝ ${pct(b.pass, fb)}。分母仅含已到面且结果明确为通过/未通过的记录。` : '暂无已反馈样本。'}</p></div>`;
+  } else if (stage === 'passed') {
+    body += `<div class="detail-grid">${stat('面试通过', b.pass)}${stat('其中已入职', b.pass - Math.max(0, b.noonb) > 0 ? b.pass - b.noonb : b.pass - b.noonb)}${stat('通过未入职', b.noonb)}${stat('结果待补', b.ppend)}</div>`;
+    body += `<div class="info-callout"><strong>口径说明</strong><p>通过按登记批次的最新状态；入职按批次当前记录。通过后尚未登记入职的 ${b.noonb} 条需要跟进确认。</p></div>`;
+  } else if (stage === 'hired') {
+    const hireMain = metricRow('核实入职');
+    body += `<div class="detail-grid">${stat('批次入职', b.onb, '同批登记已入职')}${stat('试岗离职', b.quit, '不计入核实入职')}${stat('核实入职（主表）', hireMain, '按入职日期统计')}</div>`;
+    body += `<div class="info-callout"><strong>两种口径的区别</strong><p>批次入职：所选区间「登记的人」截至本次更新已入职的人数，后续入职可发生在区间结束之后；主表口径核实入职：按「入职日期」落在所选区间的人数。两者日期含义不同，不能直接相除。</p></div>`;
+    body += `<h3>回访覆盖</h3>${simpleTable(['回访节点', '已回访', '待补', '异常'], [['1天', b.rv1, b.obAll - b.rv1, b.rv1bad], ['3天', b.rv3, b.obAll - b.rv3, '—'], ['7天', b.rv7, b.obAll - b.rv7, '—']].map(row => row.map(x => num(x))))}`;
+  }
+  body += `<h3>人员构成</h3>${simpleTable(['招聘专员', '人数'], PEOPLE.map(p => {
+    const pb = personBatches(p);
+    const v = { invite: pb.n, attended: pb.arr, passed: pb.pass, hired: pb.onb }[stage];
+    return [personLink(p), num(v)];
+  }).filter(row => row[1] !== '0').concat([]))}`;
+  if (stage !== 'invite') body = body.replace('<h3>候选人明细</h3>', '');
+  body += `<h3>候选人明细</h3>${recordsTable(rs)}`;
+  setDetail(meta.kicker, meta.title, subtitle, body);
+}
+
+function renderPerson(person, subtitle) {
+  if (!PEOPLE.includes(person)) return;
+  const pb = personBatches(person);
+  const fb = pb.pass + pb.nopass;
+  const clients = clientsInRange(person);
+  let body = `<div class="detail-grid">
+    ${stat('核实入职（主表）', metricRow('核实入职', person), '按入职日期')}
+    ${stat('批次入职', pb.onb, '同批登记已入职')}
+    ${stat('面试通过', pb.pass, fb ? `已反馈通过率 ${pct(pb.pass, fb)}` : '')}
+    ${stat('实际到面', pb.arr, `邀约 ${pb.n}`)}
+    ${stat('我沟通', metricRow('我沟通', person))}
+    ${stat('企微添加', metricRow('企微添加数', person))}
+  </div>`;
+  body += statusBlock('邀约推进', [
+    { label: '已到面', value: pb.arr, color: '#3a84c4' },
+    { label: '未到面', value: pb.noarr, color: '#d7dee8' },
+    { label: '待补', value: pb.apend, color: '#d9a441' }
+  ], pb.n);
+  if (pb.apend || pb.ppend) body += `<div class="info-callout"><strong>需要确认</strong><p>${pb.apend ? `到面状态待补 ${pb.apend} 条；` : ''}${pb.ppend ? `面试结果待补 ${pb.ppend} 条。` : ''}</p></div>`;
+  body += `<h3>参与项目</h3>${clients.length ? simpleTable(['项目', '邀约', '到面', '通过', '入职', '岗位'], clients.map(c => [clientLink(c.name), c.n, c.arr, c.pass, c.onb, esc([...c.jobs].slice(0, 3).join('、'))])) : '<p class="source-note">所选区间该人员没有邀约登记记录。</p>'}`;
+  body += `<h3>完整日报指标</h3>${simpleTable(['指标', '数量', '说明'], Object.keys(METRIC_NOTES).map(k => [esc(k), num(metricRow(k, person)), esc(METRIC_NOTES[k])]))}`;
+  body += `<h3>候选人明细</h3>${recordsTable(inRangeRecords(r => r.p === person), { noClientLink: false })}`;
+  setDetail('人员业绩', person, subtitle, body);
+}
+
+function renderClient(client, subtitle) {
+  const c = clientsInRange().find(x => x.name === client);
+  if (!c) { setDetail('项目详情', client, subtitle, '<p class="source-note">该项目在当前所选区间没有邀约登记记录。</p>'); return; }
+  const fb = c.pass + c.nopass;
+  let body = `<div class="detail-grid">
+    ${stat('发出邀约', c.n, '登记批次')}
+    ${stat('实际到面', c.arr, `到面率 ${pct(c.arr, c.n)}`)}
+    ${stat('面试通过', c.pass, fb ? `已反馈通过率 ${pct(c.pass, fb)}` : '')}
+    ${stat('入职', c.onb, c.quit ? `试岗离职 ${c.quit}` : '')}
+  </div>`;
+  body += statusBlock('邀约推进', [
+    { label: '已到面', value: c.arr, color: '#3a84c4' },
+    { label: '未到面', value: c.noarr, color: '#d7dee8' },
+    { label: '待补', value: c.apend, color: '#d9a441' }
+  ], c.n);
+  body += `<h3>参与人员</h3>${simpleTable(['招聘专员', '邀约', '到面', '通过', '入职'], [...c.people].map(p => {
+    const pc = clientsInRange(p).find(x => x.name === client) || { n: 0, arr: 0, pass: 0, onb: 0 };
+    return [personLink(p), pc.n, pc.arr, pc.pass, pc.onb];
+  }))}`;
+  body += `<h3>涉及岗位</h3><div class="job-tags">${[...c.jobs].map(j => `<span class="badge badge--blue">${esc(j)}</span>`).join('') || '<span class="muted">无</span>'}</div>`;
+  body += `<h3>候选人明细</h3>${recordsTable(c.rs)}`;
+  body += `<div class="info-callout"><strong>口径说明</strong><p>该项目指标全部来自邀约登记批次（按登记日期）。企微添加无可靠项目字段，不分摊到项目；平台沟通与简历为个人过程量，不在项目维度拆分。</p></div>`;
+  setDetail('项目详情', client, subtitle, body);
+}
+
+function renderDay(date) {
+  const day = data.daily[date];
+  if (!day) { setDetail('当日明细', pretty(date), '', '<p class="source-note">该日期没有日报数据。</p>'); return; }
+  const rs = data.invite_records.filter(r => r.d === date);
+  const arr = rs.filter(r => r.a === '到面').length;
+  const pass = rs.filter(r => r.ps === '通过').length;
+  const hireMain = (day.metrics['核实入职'] || zeros()).reduce((a, b) => a + (b || 0), 0);
+  let body = `<div class="detail-grid">
+    ${stat('发出邀约', rs.length, '当日登记')}
+    ${stat('实际到面', arr)}
+    ${stat('面试通过', pass)}
+    ${stat('核实入职', hireMain, '按入职日期')}
+    ${stat('我沟通', (day.metrics['我沟通'] || zeros()).reduce((a, b) => a + (b || 0), 0))}
+    ${stat('企微添加', (day.metrics['企微添加数'] || zeros()).reduce((a, b) => a + (b || 0), 0))}
+  </div>`;
+  if (day.has_report && day.covered < PEOPLE.length) {
+    body += `<div class="info-callout"><strong>来源覆盖提示</strong><p>当日 BOSS 明细覆盖 ${day.covered}/${PEOPLE.length} 人，未覆盖人员的平台指标可能偏低。</p></div>`;
+  }
+  body += `<h3>人员日报</h3>${simpleTable(['招聘专员', '我沟通', '企微添加', '发出邀约', '实际到面', '面试通过', '核实入职'], PEOPLE.map((p, i) => {
+    const get = k => (day.metrics[k] || zeros())[i];
+    const pb = personBatches(p);
+    const dayRs = data.invite_records.filter(r => r.d === date && r.p === p);
+    return [personLink(p), num(get('我沟通')), num(get('企微添加数')), dayRs.length, dayRs.filter(r => r.a === '到面').length, dayRs.filter(r => r.ps === '通过').length, num(get('核实入职'))];
+  }))}`;
+  body += day.positions?.length ? `<h3>当日岗位</h3><div class="job-tags">${day.positions.map(j => `<span class="badge badge--blue">${esc(j)}</span>`).join('')}</div>` : '';
+  body += `<h3>当日登记的候选人</h3>${recordsTable(rs)}`;
+  setDetail('当日明细', pretty(date), `覆盖 ${day.covered}/${PEOPLE.length} 人 · ${day.has_report ? '有日报' : '无正式日报'}`, body);
+}
+
+function renderMethodology() {
+  let body = `<div class="info-callout"><strong>一份看板，两类业务日期</strong><p>到面、通过、邀约按邀约表的「登记日期」统计，状态使用当前源文件的最新记录；核实入职按「入职日期」统计。两者不能直接相除为同批次转化率。</p></div>`;
+  body += `<h3>指标定义</h3>${simpleTable(['指标', '说明'], Object.keys(METRIC_NOTES).map(k => [esc(k), esc(METRIC_NOTES[k])]))}`;
+  body += `<h3>本版数据范围</h3><ul class="detail-list">
+    <li><b>日报：${data.meta.range.from} 至 ${data.meta.range.to}</b><span>源表生成于 ${stamp(data.meta.generated_at)}，团队 ${PEOPLE.length} 人。</span></li>
+    <li><b>漏斗上半场为量级参考</b><span>触达、沟通、简历、企微来自不同来源，非同一批候选人。</span></li>
+    <li><b>候选人明细来自邀约登记批次</b><span>包含姓名、岗位、项目、到面/结果/入职状态与回访节点。</span></li>
+    <li><b>更新方式</b><span>正式版快照更新后，运行 scripts/build-data.mjs 重新生成本站 data.json。</span></li>
+  </ul>`;
+  body += `<h3>来源</h3><p>${esc(data.meta.sourceWorkbook || '企业微信在线表格《创新招聘组数据》')}</p>`;
+  setDetail('统计口径', '指标与数据说明', `日报截至 ${pretty(data.meta.latest_report)}`, body);
+}
+
+// ---------- 总渲染 ----------
+function render() {
+  const b = batchStats();
+  renderHeader();
+  renderKPI(b);
+  renderCoverage(b);
+  renderFunnel(b);
+  renderClientChart();
+  renderPeopleChart();
+  renderTrend();
+  renderAttention(b);
+  $('source-footer').innerHTML = `<span>来源：企业微信在线表格《创新招聘组数据》快照（与正式版看板同源）</span><span>源表生成 ${stamp(data.meta.generated_at)}</span><span>共 ${data.invite_records.length} 条邀约记录 · ${PEOPLE.length} 名招聘专员</span>`;
+}
+
+// ---------- 交互 ----------
 function action(target) {
-  const a=target.closest('[data-action]');if(!a)return;
-  if(a.dataset.action==='person')showDetail({type:'person',id:a.dataset.id});
-  if(a.dataset.action==='project')showDetail({type:'project',client:a.dataset.client,id:a.dataset.id});
-  if(a.dataset.action==='metric')showDetail({type:'metric',metric:a.dataset.metric,id:a.dataset.id});
-  if(a.dataset.action==='day')showDetail({type:'day',metric:a.dataset.metric,date:a.dataset.date});
-  if(a.dataset.action==='methodology')showDetail({type:'methodology'});
-  if(a.dataset.action==='interview')showDetail({type:'interview'});
+  const a = target.closest('[data-action]');
+  if (!a) return;
+  const act = a.dataset.action;
+  if (act === 'person') showDetail({ type: 'person', person: a.dataset.person });
+  else if (act === 'client') showDetail({ type: 'client', client: a.dataset.client });
+  else if (act === 'metric') showDetail({ type: 'metric', metric: a.dataset.metric });
+  else if (act === 'stage') showDetail({ type: 'stage', stage: a.dataset.stage });
+  else if (act === 'methodology') showDetail({ type: 'methodology' });
 }
 function bind() {
-  const navLinks=[...document.querySelectorAll('.primary-nav a')];
-  function markNav(hash){navLinks.forEach(link=>{const active=link.hash===hash;link.classList.toggle('is-active',active);if(active)link.setAttribute('aria-current','location');else link.removeAttribute('aria-current');});}
-  navLinks.forEach(link=>link.addEventListener('click',()=>markNav(link.hash)));
-  let scrollPending=false;
-  window.addEventListener('scroll',()=>{if(scrollPending)return;scrollPending=true;requestAnimationFrame(()=>{const sections=['overview','people','projects'];let current='overview';for(const id of sections){if($(id).getBoundingClientRect().top<180)current=id;}markNav('#'+current);scrollPending=false;});},{passive:true});
-  markNav(location.hash||'#overview');
-  document.querySelectorAll('[data-preset]').forEach(b=>b.addEventListener('click',()=>{if(b.dataset.preset==='custom'){$('custom-range').hidden=false;$('start-date').focus();return;}const range=presetRange(data,b.dataset.preset);setRange(range.start,range.end,b.dataset.preset);}));
-  $('apply-range').addEventListener('click',e=>{e.preventDefault();setRange($('start-date').value,$('end-date').value,'custom');});
-  $('sort-metric').addEventListener('change',e=>{state.sort=e.target.value;renderPeople(aggregateDaily(data,state.start,state.end));});
-  $('project-sort').addEventListener('change',e=>{state.projectSort=e.target.value;renderProjects();});
-  $('trend-metric').addEventListener('change',e=>{state.trend=e.target.value;renderTrend();});
-  $('toggle-full').addEventListener('click',()=>{state.full=!state.full;if(matchMedia('(max-width: 767px)').matches)state.mobileTable=true;renderPeople(aggregateDaily(data,state.start,state.end));});
-  $('mobile-table-toggle').addEventListener('click',()=>{state.mobileTable=!state.mobileTable;if(state.mobileTable)state.full=true;renderPeople(aggregateDaily(data,state.start,state.end));});
-  $('open-methodology').addEventListener('click',()=>showDetail({type:'methodology'}));
-  document.addEventListener('click',e=>action(e.target));
-  document.addEventListener('keydown',e=>{const target=e.target.closest?.('g[data-action]');if(target&&(e.key==='Enter'||e.key===' ')){e.preventDefault();action(target);}});
-  $('close-detail').addEventListener('click',()=>$('detail-dialog').close());
-  $('detail-dialog').addEventListener('click',e=>{if(e.target===$('detail-dialog'))$('detail-dialog').close();});
-  $('detail-dialog').addEventListener('close',()=>{state.detail=null;document.documentElement.style.overflow='';state.opener?.focus?.();});
-  let timer;window.addEventListener('resize',()=>{clearTimeout(timer);timer=setTimeout(()=>renderTrend(),120);});
+  document.querySelectorAll('[data-preset]').forEach(b => b.addEventListener('click', () => {
+    if (b.dataset.preset === 'custom') { $('custom-range').hidden = false; $('start-date').focus(); return; }
+    setPreset(b.dataset.preset);
+    render();
+  }));
+  $('apply-range').addEventListener('click', () => {
+    const s = $('start-date').value, e = $('end-date').value;
+    if (!s || !e || s > e) { $('range-error').textContent = '请选择有效日期，开始日期不能晚于结束日期。'; return; }
+    $('range-error').textContent = '';
+    state.mode = 'range'; state.from = s; state.to = e; state.preset = 'custom';
+    const url = new URL(location.href);
+    url.searchParams.set('view', 'custom');
+    url.searchParams.set('start', s); url.searchParams.set('end', e);
+    history.replaceState(null, '', url);
+    render();
+  });
+  $('open-methodology').addEventListener('click', () => showDetail({ type: 'methodology' }));
+  document.addEventListener('click', e => action(e.target));
+  $('close-detail').addEventListener('click', closeDialog);
+  $('detail-dialog').addEventListener('click', e => { if (e.target === $('detail-dialog')) closeDialog(); });
+  $('detail-dialog').addEventListener('close', () => { document.documentElement.style.overflow = ''; state.opener?.focus?.(); });
+  let timer;
+  window.addEventListener('resize', () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => { Object.values(charts).forEach(c => c && c.resize()); }, 150);
+  });
 }
 
 async function init() {
   try {
-    const res=await fetch('./data.json',{cache:'no-store'});if(!res.ok)throw new Error('数据文件暂不可用');
-    const candidate=await res.json();
-    if(!Array.isArray(candidate.daily)||!candidate.daily.length||!candidate.meta?.periodEnd)throw new Error('数据文件不完整');
-    data=candidate;
-    const query=new URLSearchParams(location.search);const view=query.get('view');
-    const start=query.get('start'),end=query.get('end');
-    if(['latest','week','month','all'].includes(view)){Object.assign(state,presetRange(data,view));state.preset=view;}
-    else if(isoValid(start)&&isoValid(end)&&start<=end){state.start=start;state.end=end;state.preset='custom';}
-    else{Object.assign(state,presetRange(data,'latest'));state.preset='latest';}
-    $('start-date').value=state.start;$('end-date').value=state.end;$('custom-range').hidden=state.preset!=='custom';
-    $('sort-metric').value=state.sort;$('project-sort').value=state.projectSort;$('trend-metric').value=state.trend;
-    $('load-state').hidden=true;$('app-shell').hidden=false;
-    bind();render();
-  } catch(error) {
-    $('load-state').hidden=false;$('app-shell').hidden=true;
-    $('load-state').innerHTML=`<div class="empty-state"><h1>看板暂时无法加载</h1><p>请稍后刷新页面。上次已发布的数据不会因此被修改。</p><button class="btn btn-primary" onclick="location.reload()">重新加载</button></div>`;
-    console.error('Dashboard initialization failed',error);
+    const res = await fetch('./data.json', { cache: 'no-store' });
+    if (!res.ok) throw new Error('数据文件暂不可用');
+    data = await res.json();
+    if (!data.meta?.people?.length || !data.daily) throw new Error('数据文件不完整');
+    PEOPLE = data.meta.people;
+    const query = new URLSearchParams(location.search);
+    const view = query.get('view');
+    const start = query.get('start'), end = query.get('end');
+    if (view === 'custom' && start && end && start <= end) {
+      state.mode = 'range'; state.from = start; state.to = end; state.preset = 'custom';
+    } else if (['latest', 'week', 'month', 'all'].includes(view)) {
+      setPreset(view);
+    } else {
+      setPreset('latest');
+    }
+    $('load-state').hidden = true;
+    $('app-shell').hidden = false;
+    bind();
+    render();
+  } catch (error) {
+    $('load-state').hidden = false;
+    $('app-shell').hidden = true;
+    $('load-state').innerHTML = `<div class="empty-state"><strong>看板暂时无法加载</strong><p>请稍后刷新页面。已发布的数据不会因此被修改。</p><button class="btn btn-primary" onclick="location.reload()">重新加载</button></div>`;
+    console.error('Dashboard initialization failed', error);
   }
 }
 init();
