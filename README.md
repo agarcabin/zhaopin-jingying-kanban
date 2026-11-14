@@ -42,6 +42,14 @@ node scripts/build-data.mjs   # 默认读取同级目录 ../recruitment-workspac
 
 生成后提交推送即可更新线上看板。当前数据：2026-10-09 ~ 2026-11-12 共 35 天，9 名招聘专员，182 条邀约登记记录。
 
+### AI 开发看板（ai-data.json）
+
+滴答清单「AI 开发进度」文件夹的只读快照，字段与正式版 `data/ai-development.json` 同构（folder / capturedAt / projects[].tasks[]，含优先级、父子任务、检查项、完成时间）。更新方式与正式版一致：通过已授权的国内滴答 MCP 重新读取该文件夹的未完成任务，并调用 list_completed_tasks_by_date 按文件夹内全部项目查询已完成任务，按任务 ID 合并去重后覆盖 `ai-data.json`。前端只读快照，不直接调用滴答接口，不含任何凭据。
+
+### 项目看板（project-data.json）
+
+企微表格《合作项目情况表》「合作项目」子表的快照，分三部分：`projects`（正式合作项目，含岗位类别 / 主招 / 城市 / 负责业务 / 确认合作日期 / 费用 / 需求等）、`daily`（计天项目）、`following`（跟进项目）。更新方式：用已授权的 `wecom-cli` 读取该子表（`sheet cells get` 导出 CSV 后按「计天项目：」「跟进项目：」分区解析），覆盖 `project-data.json`。快照中不含联系人电话等敏感字段。
+
 ### 口径要点
 
 - 邀约 / 到面 / 通过 / 批次入职 / 回访来自邀约登记批次（`invite_records`），按登记日期归组，状态为源文件最新记录；
@@ -58,9 +66,11 @@ python -m http.server 8000
 
 ## 文件
 
-- `index.html`：页面结构
+- `index.html`：页面结构（招聘 / AI开发 / 项目三个看板）
 - `styles.css`：样式（设计 token + 响应式）
-- `app.js`：聚合逻辑、图表渲染、弹窗下钻
-- `data.json`：快照数据（由脚本生成，勿手改）
+- `app.js`：聚合逻辑、图表渲染、弹窗下钻、页面切换
+- `data.json`：招聘快照数据（由脚本生成，勿手改）
+- `ai-data.json`：滴答清单 AI 开发进度快照
+- `project-data.json`：企微表格合作项目快照
 - `assets/`：ECharts 本地资源
 - `scripts/build-data.mjs`：从正式版提取数据的构建脚本

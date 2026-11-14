@@ -13,7 +13,7 @@ const stamp = v => v ? String(v).slice(0, 16).replace('T', ' ').replaceAll('-', 
 let data = null;
 let PEOPLE = [];
 const state = { mode: 'day', day: '', from: '', to: '', preset: 'latest' };
-const charts = { client: null, people: null, trend: null };
+const charts = { client: null, people: null, trend: null, ai: null, proj: null };
 
 const METRIC_NOTES = {
   '发布岗位数': '按当日后台记录行计；区间显示最近一个有日报日的报表值，不跨日求和。',
@@ -689,6 +689,9 @@ function action(target) {
   else if (act === 'metric') showDetail({ type: 'metric', metric: a.dataset.metric });
   else if (act === 'stage') showDetail({ type: 'stage', stage: a.dataset.stage });
   else if (act === 'methodology') showDetail({ type: 'methodology' });
+  else if (act === 'ai-task') aiTaskDetail(+a.dataset.pi, +a.dataset.ti);
+  else if (act === 'ai-proj') aiProjectDetail(+a.dataset.pi);
+  else if (act === 'proj') projDetail(+a.dataset.i);
 }
 // ---------- 页面切换（招聘 / AI开发 / 项目） ----------
 const PAGES = ['recruit', 'ai', 'project'];
@@ -709,7 +712,7 @@ function switchPage(page, updateUrl = true) {
     url.searchParams.set('page', page);
     history.replaceState(null, '', url);
   }
-  if (page === 'recruit') Object.values(charts).forEach(c => c && c.resize());
+  Object.values(charts).forEach(c => c && c.resize());
   window.scrollTo({ top: 0 });
 }
 
@@ -735,6 +738,8 @@ function bind() {
     render();
   });
   $('open-methodology').addEventListener('click', () => showDetail({ type: 'methodology' }));
+  const aiSearch = $('ai-search-input');
+  if (aiSearch) aiSearch.addEventListener('input', () => { aiQuery = aiSearch.value.trim().toLowerCase(); renderAiBoard(); });
   document.addEventListener('click', e => action(e.target));
   $('close-detail').addEventListener('click', closeDialog);
   $('detail-dialog').addEventListener('click', e => { if (e.target === $('detail-dialog')) closeDialog(); });
@@ -746,11 +751,250 @@ function bind() {
   });
 }
 
+
+// ---------- AI 开发看板（滴答清单「AI 开发进度」快照） ----------
+let aiData = null, aiQuery = '';
+const kv = (l, v) => `<div class="detail-stat"><span class="stat-label">${esc(l)}</span><strong class="stat-value" style="font-size:16px">${esc(v)}</strong></div>`;
+const AI_PRIORITY = { 5: { name: '高优先级', color: '#b03a2e' }, 3: { name: '中优先级', color: '#c09a4e' }, 1: { name: '低优先级', color: '#6d8ea8' }, 0: { name: '无优先级', color: '#8d97a5' } };
+const aiPri = t => AI_PRIORITY[t.priority || 0] || AI_PRIORITY[0];
+const aiDone = t => t.status === 2;
+const dKey = v => v ? String(v).slice(0, 10) : '';
+
+function aiStats() {
+  let total = 0, done = 0, high = 0;
+  aiData.projects.forEach(p => p.tasks.forEach(t => {
+    total++; if (aiDone(t)) done++; if (t.priority === 5 && !aiDone(t)) high++;
+  }));
+  return { total, done, undone: total - done, high };
+}
+function aiTaskText(t) {
+  return [t.title, t.content, t.desc, ...(t.items || []).map(i => i.title)].filter(Boolean).join(' ');
+}
+function aiTaskMatches(project, task, seen = new Set()) {
+  if (seen.has(task.id)) return false; seen.add(task.id);
+  const hay = aiTaskText(task).toLowerCase();
+  if (!aiQuery || hay.includes(aiQuery)) return true;
+  return project.tasks.some(c => c.parentId === task.id && aiTaskMatches(project, c, seen));
+}
+function aiChildren(project, task) { return project.tasks.filter(t => t.parentId === task.id); }
+
+function renderAI() {
+  if (!aiData) return;
+  const st = aiStats();
+  $('ai-snapshot').textContent = '滴答清单快照 · ' + stamp(aiData.capturedAt);
+  const kpis = [
+    { eyebrow: '存量', label: '开发项目数', value: aiData.projects.length, note: '「AI 开发进度」文件夹', cls: '' },
+    { eyebrow: '过程', label: '未完成任务', value: st.undone, note: '待推进 / 待验收', cls: '' },
+    { eyebrow: '结果', label: '已完成任务', value: st.done, note: '含子任务与检查项', cls: 'metric-card--steel' },
+    { eyebrow: '风险', label: '高优先级待办', value: st.high, note: '高优先级且未完成', cls: 'metric-card--gold' }
+  ];
+  $('ai-kpi').innerHTML = kpis.map(c => `<div class="metric-card ${c.cls}">
+    <div class="metric-eyebrow">${c.eyebrow}</div>
+    <div class="metric-label">${esc(c.label)}</div>
+    <span class="metric-value">${num(c.value)}</span>
+    <div class="metric-sub"><span>${esc(c.note)}</span></div></div>`).join('');
+  $('ai-process').innerHTML = aiData.projects.map(p => {
+    const total = p.tasks.length, done = p.tasks.filter(aiDone).length;
+    return `<div class="process-item"><span class="process-label">${esc(p.name)}</span><span class="process-value">${total}</span><span class="process-note">未完成 ${total - done} · 已完成 ${done}</span></div>`;
+  }).join('');
+  renderAiChart();
+  renderAiBoard();
+}
+function renderAiChart() {
+  const el = $('ai-chart');
+  if (!charts.ai) charts.ai = echarts.init(el);
+  const names = aiData.projects.map(p => p.name);
+  const undone = aiData.projects.map(p => p.tasks.filter(t => !aiDone(t)).length);
+  const done = aiData.projects.map(p => p.tasks.filter(aiDone).length);
+  charts.ai.setOption({
+    grid: { left: 8, right: 40, top: 30, bottom: 0, containLabel: true },
+    legend: { top: 0, right: 0, itemWidth: 10, itemHeight: 10, textStyle: { fontSize: 11, color: '#6e6a5c' } },
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+    xAxis: { type: 'value', splitLine: { lineStyle: { color: '#eae5d6' } }, axisLabel: { fontSize: 11, color: '#99937f' }, minInterval: 1 },
+    yAxis: { type: 'category', data: names, inverse: true, axisLabel: { fontSize: 12, color: '#211d15', width: 120, overflow: 'truncate' }, axisTick: { show: false }, axisLine: { lineStyle: { color: '#c9c2ae' } } },
+    series: [
+      { name: '未完成', type: 'bar', stack: 't', itemStyle: { color: '#8ba4b6' }, data: undone, barMaxWidth: 16, cursor: 'pointer' },
+      { name: '已完成', type: 'bar', stack: 't', itemStyle: { color: '#33526b' }, data: done, barMaxWidth: 16, label: { show: true, position: 'right', fontSize: 11, color: '#33526b', fontWeight: 600, formatter: p => p.value + undone[p.dataIndex] ? (done[p.dataIndex] + undone[p.dataIndex]) : '' }, cursor: 'pointer' }
+    ]
+  });
+  charts.ai.off('click');
+  charts.ai.on('click', e => { if (e.componentType === 'series') aiProjectDetail(e.dataIndex); });
+}
+function aiTaskRow(project, task, depth = 0) {
+  const p = aiPri(task);
+  const completed = aiDone(task);
+  const kids = aiChildren(project, task);
+  const schedule = task.startDate || task.dueDate ? `${dKey(task.startDate || task.dueDate)}${task.startDate && task.dueDate && task.startDate !== task.dueDate ? ' — ' + dKey(task.dueDate) : ''}` : '';
+  const items = task.items?.length ? task.items.filter(i => i.status !== 0).length + '/' + task.items.length + ' 检查项' : '';
+  const desc = task.content || task.desc || (task.items?.[0]?.title ? '· ' + task.items[0].title : '');
+  const ti = project.tasks.indexOf(task);
+  return `<div class="ai-task-row ${completed ? 'is-done' : ''}" style="--depth:${depth}">
+    <button type="button" class="ai-task-open" data-action="ai-task" data-pi="${aiData.projects.indexOf(project)}" data-ti="${ti}" aria-label="查看任务：${esc(task.title)}">
+      <span class="ai-dot" style="background:${p.color}" title="${p.name}"></span>
+      <span class="ai-task-copy">
+        <span class="ai-task-title">${esc(task.title)}</span>
+        ${completed ? `<span class="ai-task-status">已完成${dKey(task.completedTime) ? ' · ' + dKey(task.completedTime) : ''}</span>` : `<span class="ai-task-status ai-task-status--live">${p.name}</span>`}
+        ${desc ? `<span class="ai-task-description">${esc(desc)}</span>` : ''}
+        ${schedule ? `<span class="ai-task-date">${schedule}</span>` : ''}
+        ${items ? `<span class="ai-task-items">☷ ${items}</span>` : ''}
+      </span>
+    </button>
+    ${kids.length ? `<div class="ai-children">${kids.map(k => aiTaskRow(project, k, depth + 1)).join('')}</div>` : ''}
+  </div>`;
+}
+function renderAiBoard() {
+  const html = aiData.projects.map((p, pi) => {
+    const roots = p.tasks.filter(t => !t.parentId);
+    const matched = roots.filter(t => aiTaskMatches(p, t));
+    const total = p.tasks.length, done = p.tasks.filter(aiDone).length;
+    if (aiQuery && !matched.length) return '';
+    return `<div class="ai-project-card surface">
+      <div class="ai-project-head">
+        <h3>${esc(p.name)}</h3>
+        <span class="ai-project-meta">${aiQuery ? `匹配 ${p.tasks.filter(t => aiTaskMatches(p, t)).length} 项 · ` : ''}未完成 ${total - done} · 已完成 ${done} / ${total}</span>
+      </div>
+      ${matched.length ? matched.map(t => aiTaskRow(p, t)).join('') : '<p class="source-note" style="padding:8px 14px 12px">该项目暂无任务。</p>'}
+    </div>`;
+  }).join('');
+  $('ai-board').innerHTML = html || '<p class="source-note" style="padding:16px 4px">没有匹配的任务，请更换关键词。</p>';
+}
+function aiTaskDetail(pi, ti) {
+  const p = aiData.projects[pi]; const t = p.tasks[ti];
+  const pri = aiPri(t);
+  const kids = aiChildren(p, t);
+  setDetail('滴答清单 · 任务详情', t.title, `${p.name} · ${pri.name}`, `
+    <div class="detail-grid">${kv('状态', aiDone(t) ? '已完成' : '进行中')}${kv('优先级', pri.name)}${kv('子任务', String(kids.length))}${kv('检查项', String(t.items?.length || 0))}${kv('开始日期', dKey(t.startDate) || '—')}${kv('截止日期', dKey(t.dueDate) || '—')}${aiDone(t) ? kv('完成时间', dKey(t.completedTime) || '—') : ''}</div>
+    ${(t.content || t.desc) ? `<h3>任务描述</h3><p class="source-note">${esc(t.content || t.desc)}</p>` : ''}
+    ${t.items?.length ? `<h3>检查项</h3>${simpleTable(['检查项', '状态'], t.items.map(i => [i.title, i.status === 2 ? '已完成' : i.status === 1 ? '进行中' : '未开始']))}` : ''}
+    ${kids.length ? `<h3>子任务</h3>${simpleTable(['任务', '状态'], kids.map(k => [esc(k.title), aiDone(k) ? '已完成' : '进行中']))}` : ''}
+    <p class="source-note" style="margin-top:14px">此页面为滴答清单任务快照，任务状态以滴答清单为准。</p>`);
+}
+function aiProjectDetail(pi) {
+  const p = aiData.projects[pi];
+  const done = p.tasks.filter(aiDone).length;
+  setDetail('滴答清单 · 项目详情', p.name, '「AI 开发进度」文件夹快照', `
+    <div class="detail-grid">${kv('任务总数', String(p.tasks.length))}${kv('未完成', String(p.tasks.length - done))}${kv('已完成', String(done))}${kv('高优先级待办', String(p.tasks.filter(t => t.priority === 5 && !aiDone(t)).length))}</div>
+    ${renderAiProjectTasks(p)}`);
+}
+function renderAiProjectTasks(p) {
+  const roots = p.tasks.filter(t => !t.parentId);
+  if (!roots.length) return '<p class="source-note">该项目暂无任务。</p>';
+  return `<h3>任务清单</h3><div class="detail-table-wrap"><table class="detail-table"><thead><tr><th>任务</th><th>优先级</th><th>状态</th><th>排期</th></tr></thead><tbody>${roots.map(t => {
+    const pri = aiPri(t);
+    const sched = t.startDate || t.dueDate ? dKey(t.startDate || t.dueDate) : '—';
+    return `<tr><th scope="row">${esc(t.title)}${aiChildren(p, t).length ? `（${aiChildren(p, t).length} 子任务）` : ''}</th><td>${pri.name}</td><td>${aiDone(t) ? '已完成' : '进行中'}</td><td>${sched}</td></tr>`;
+  }).join('')}</tbody></table></div>`;
+}
+
+// ---------- 项目看板（企微表格《合作项目情况表》快照） ----------
+let projData = null;
+function renderProject() {
+  if (!projData) return;
+  const ps = projData.projects;
+  $('proj-snapshot').textContent = '企微表格快照 · ' + stamp(projData.meta.capturedAt);
+  const cities = [...new Set(ps.map(p => p.city).filter(Boolean))];
+  const main = ps.filter(p => p.recruit === '主招').length;
+  const worker = ps.filter(p => p.category.includes('普工')).length;
+  const white = ps.filter(p => p.category.includes('白领') || p.category.includes('技工')).length;
+  $('proj-kpi').innerHTML = [
+    { eyebrow: '存量', label: '正式合作项目', value: ps.length, note: '已确认合作', cls: '' },
+    { eyebrow: '重点', label: '主招项目', value: main, note: '主招 / 辅招 / 试招分类', cls: 'metric-card--steel' },
+    { eyebrow: '覆盖', label: '覆盖城市', value: cities.length, note: cities.join(' · '), cls: '' },
+    { eyebrow: '储备', label: '跟进中项目', value: projData.following.length, note: '尚未正式确认', cls: 'metric-card--gold' }
+  ].map(c => `<div class="metric-card ${c.cls}">
+    <div class="metric-eyebrow">${c.eyebrow}</div>
+    <div class="metric-label">${esc(c.label)}</div>
+    <span class="metric-value">${num(c.value)}</span>
+    <div class="metric-sub"><span>${esc(c.note)}</span></div></div>`).join('');
+  $('proj-process').innerHTML = [
+    ['普工项目', worker, '蓝领普工输送'],
+    ['白领技工项目', white, '白领与技工岗位'],
+    ['计天项目', projData.daily.length, '按天计费合作'],
+    ['跟进项目', projData.following.length, '待确认合作']
+  ].map(([l, v, n]) => `<div class="process-item"><span class="process-label">${l}</span><span class="process-value">${v}</span><span class="process-note">${n}</span></div>`).join('');
+  renderProjChart();
+  renderProjSpecial();
+  renderProjTable();
+}
+function renderProjChart() {
+  const el = $('proj-chart');
+  if (!charts.proj) charts.proj = echarts.init(el);
+  const groups = {};
+  projData.projects.forEach(p => { const c = p.city || '未标注'; groups[c] = (groups[c] || 0) + 1; });
+  const entries = Object.entries(groups).sort((a, b) => b[1] - a[1]);
+  charts.proj.setOption({
+    grid: { left: 8, right: 40, top: 10, bottom: 0, containLabel: true },
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+    xAxis: { type: 'value', splitLine: { lineStyle: { color: '#eae5d6' } }, axisLabel: { fontSize: 11, color: '#99937f' }, minInterval: 1 },
+    yAxis: { type: 'category', data: entries.map(e => e[0]), inverse: true, axisLabel: { fontSize: 12, color: '#211d15' }, axisTick: { show: false }, axisLine: { lineStyle: { color: '#c9c2ae' } } },
+    series: [{ type: 'bar', itemStyle: { color: '#33526b' }, data: entries.map(e => e[1]), barMaxWidth: 18, label: { show: true, position: 'right', fontSize: 11, fontWeight: 600, color: '#33526b' }, cursor: 'pointer' }]
+  });
+  charts.proj.off('click');
+  charts.proj.on('click', e => { if (e.componentType === 'series') projCityDetail(e.name); });
+}
+function renderProjSpecial() {
+  const daily = projData.daily.map(d => `<li><b>${esc(d.name)}</b></li>`).join('');
+  const following = projData.following.map(f => `<li><b>${esc(f.name)}</b><span>${esc(f.city || '')}${f.owner ? ' · 负责业务 ' + esc(f.owner) : ''}</span></li>`).join('');
+  $('proj-special').innerHTML = `
+    <div class="proj-special-block">
+      <h3>计天项目 <span class="badge badge--blue">${projData.daily.length} 个</span></h3>
+      <ul class="detail-list">${daily || '<li><span>暂无记录</span></li>'}</ul>
+    </div>
+    <div class="proj-special-block">
+      <h3>跟进项目 <span class="badge badge--amber">${projData.following.length} 个</span></h3>
+      <ul class="detail-list">${following || '<li><span>暂无记录</span></li>'}</ul>
+    </div>
+    <p class="source-note">以上信息为快照，最新进展以《合作项目情况表》为准。</p>`;
+}
+function renderProjTable() {
+  const ps = projData.projects;
+  $('proj-table').innerHTML = `<div class="detail-table-wrap"><table class="detail-table"><thead><tr>
+    <th>岗位类别</th><th>项目名称</th><th>主招</th><th>城市</th><th>负责业务</th><th>确认合作</th><th>费用</th><th>当前需求</th></tr></thead><tbody>
+    ${ps.map((p, i) => `<tr class="proj-row" data-action="proj" data-i="${i}">
+      <td>${esc(p.category) || '—'}</td><th scope="row">${esc(p.name)}</th>
+      <td>${p.recruit ? `<span class="badge ${p.recruit === '主招' ? 'badge--teal' : p.recruit === '辅招' ? 'badge--blue' : 'badge--gray'}">${esc(p.recruit)}</span>` : '—'}</td>
+      <td>${esc(p.city) || '—'}</td><td>${esc(p.owner) || '—'}</td><td>${esc(p.date) || '—'}</td>
+      <td>${esc(p.fee) || '—'}</td><td>${p.need ? `<span class="badge badge--amber">${esc(p.need)}</span>` : '—'}</td>
+    </tr>`).join('')}</tbody></table></div>
+    <p class="source-note" style="margin-top:8px">点击项目行查看亮点、劣势、费用与合作细节。</p>`;
+}
+function projDetail(i) {
+  const p = projData.projects[i];
+  const grid = [
+    kv('确认合作日期', p.date || '—'),
+    kv('是否开票', p.billing || '—'),
+    kv('服务中心', p.center || '—'),
+    kv('负责客服', p.service || '—'),
+    kv('负责业务', p.owner || '—'),
+    kv('城市', p.city || '—')
+  ].join('');
+  const info = (title, text) => text ? `<h3>${title}</h3><p class="source-note">${esc(text)}</p>` : '';
+  setDetail('合作项目 · 详情', p.name, `${p.category} · ${p.city}`, `
+    <div class="detail-grid">${grid}</div>
+    ${info('费用', p.fee ? p.fee + (p.feeNote ? '（' + p.feeNote + '）' : '') : p.feeNote)}
+    ${info('项目亮点', p.highlight)}
+    ${info('项目劣势', p.weakness)}
+    ${info('当前需求', p.need)}
+    ${info('其他备注', p.note)}
+    <p class="source-note" style="margin-top:14px">信息为《合作项目情况表》快照，最新进展以源表为准。</p>`);
+}
+function projCityDetail(city) {
+  const ps = projData.projects.filter(p => p.city === city);
+  setDetail('合作项目 · 城市分布', city, `共 ${ps.length} 个正式合作项目`, `
+    ${simpleTable(['项目名称', '岗位类别', '主招', '负责业务', '费用'], ps.map(p => [esc(p.name), esc(p.category), esc(p.recruit || '—'), esc(p.owner || '—'), esc(p.fee || '—')]))}`);
+}
+
 async function init() {
   try {
-    const res = await fetch('./data.json', { cache: 'no-store' });
+    const [res, aiRes, projRes] = await Promise.all([
+      fetch('./data.json', { cache: 'no-store' }),
+      fetch('./ai-data.json', { cache: 'no-store' }).catch(() => null),
+      fetch('./project-data.json', { cache: 'no-store' }).catch(() => null)
+    ]);
     if (!res.ok) throw new Error('数据文件暂不可用');
     data = await res.json();
+    aiData = aiRes && aiRes.ok ? await aiRes.json() : null;
+    projData = projRes && projRes.ok ? await projRes.json() : null;
     if (!data.meta?.people?.length || !data.daily) throw new Error('数据文件不完整');
     PEOPLE = data.meta.people;
     const query = new URLSearchParams(location.search);
@@ -766,6 +1010,8 @@ async function init() {
     $('load-state').hidden = true;
     $('app-shell').hidden = false;
     bind();
+    renderAI();
+    renderProject();
     switchPage(currentPage(), false);
     render();
   } catch (error) {
