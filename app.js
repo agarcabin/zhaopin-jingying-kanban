@@ -690,7 +690,34 @@ function action(target) {
   else if (act === 'stage') showDetail({ type: 'stage', stage: a.dataset.stage });
   else if (act === 'methodology') showDetail({ type: 'methodology' });
 }
+// ---------- 页面切换（招聘 / AI开发 / 项目） ----------
+const PAGES = ['recruit', 'ai', 'project'];
+function currentPage() {
+  const p = new URLSearchParams(location.search).get('page');
+  return PAGES.includes(p) ? p : 'recruit';
+}
+function switchPage(page, updateUrl = true) {
+  if (!PAGES.includes(page)) page = 'recruit';
+  document.querySelectorAll('.page').forEach(el => { el.hidden = (el.id !== 'page-' + page); });
+  document.querySelectorAll('.page-nav-link').forEach(a => {
+    const active = a.dataset.page === page;
+    a.classList.toggle('is-active', active);
+    if (active) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
+  });
+  if (updateUrl) {
+    const url = new URL(location.href);
+    url.searchParams.set('page', page);
+    history.replaceState(null, '', url);
+  }
+  if (page === 'recruit') Object.values(charts).forEach(c => c && c.resize());
+  window.scrollTo({ top: 0 });
+}
+
 function bind() {
+  document.querySelectorAll('.page-nav-link').forEach(a => a.addEventListener('click', e => {
+    e.preventDefault();
+    switchPage(a.dataset.page);
+  }));
   document.querySelectorAll('[data-preset]').forEach(b => b.addEventListener('click', () => {
     if (b.dataset.preset === 'custom') { $('custom-range').hidden = false; $('start-date').focus(); return; }
     setPreset(b.dataset.preset);
@@ -739,6 +766,7 @@ async function init() {
     $('load-state').hidden = true;
     $('app-shell').hidden = false;
     bind();
+    switchPage(currentPage(), false);
     render();
   } catch (error) {
     $('load-state').hidden = false;

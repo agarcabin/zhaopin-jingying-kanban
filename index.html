@@ -32,9 +32,17 @@
           <div id="meta-status" class="meta-status"></div>
         </div>
       </div>
+      <nav class="page-nav" aria-label="看板切换">
+        <div class="page-nav-inner">
+          <a class="page-nav-link is-active" href="?page=recruit" data-page="recruit">招聘看板</a>
+          <a class="page-nav-link" href="?page=ai" data-page="ai">AI开发看板</a>
+          <a class="page-nav-link" href="?page=project" data-page="project">项目看板</a>
+        </div>
+      </nav>
     </header>
 
     <main class="dashboard-main" id="top">
+      <div id="page-recruit" class="page">
       <section class="date-panel" aria-label="统计日期筛选">
         <div class="date-panel-top">
           <div class="date-summary">
@@ -131,6 +139,142 @@
           <svg viewBox="0 0 18 18" aria-hidden="true" fill="none"><circle cx="9" cy="9" r="6.5"/><path d="M9 8v4M9 5.5v.1"/></svg>指标说明
         </button>
       </footer>
+      </div>
+
+      <div id="page-ai" class="page" hidden>
+        <section class="overview-section" aria-label="AI开发概览">
+          <div class="section-heading">
+            <div>
+              <div class="section-eyebrow"><span class="section-indicator" aria-hidden="true"></span>01 · 开发概览</div>
+              <h2 class="section-title">AI 开发经营总览</h2>
+              <p class="section-subtitle">结果与过程指标的框架已就绪，等待接入开发数据源后自动填充。</p>
+            </div>
+            <span class="section-helper">数据源待接入</span>
+          </div>
+          <div class="kpi-grid">
+            <div class="metric-card metric-card--steel">
+              <div class="metric-eyebrow">结果</div>
+              <div class="metric-label">功能上线数</div>
+              <span class="metric-value">—</span>
+              <div class="metric-sub"><span>验收通过并对外发布的功能</span></div>
+            </div>
+            <div class="metric-card metric-card--gold">
+              <div class="metric-eyebrow">结果</div>
+              <div class="metric-label">线上问题数</div>
+              <span class="metric-value">—</span>
+              <div class="metric-sub"><span>上线后缺陷与故障工单</span></div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-eyebrow">过程</div>
+              <div class="metric-label">完成任务数</div>
+              <span class="metric-value">—</span>
+              <div class="metric-sub"><span>需求池内关闭的开发任务</span></div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-eyebrow">过程</div>
+              <div class="metric-label">代码提交量</div>
+              <span class="metric-value">—</span>
+              <div class="metric-sub"><span>有效合并的提交次数</span></div>
+            </div>
+          </div>
+          <div class="process-strip">
+            <div class="process-item"><span class="process-label">需求池</span><span class="process-value">—</span><span class="process-note">待评审需求</span></div>
+            <div class="process-item"><span class="process-label">开发中</span><span class="process-value">—</span><span class="process-note">进行中任务</span></div>
+            <div class="process-item"><span class="process-label">待验收</span><span class="process-value">—</span><span class="process-note">提交测试的任务</span></div>
+            <div class="process-item"><span class="process-label">已上线</span><span class="process-value">—</span><span class="process-note">本季度发布</span></div>
+          </div>
+        </section>
+
+        <div class="analysis-grid">
+          <section class="surface analysis-panel" aria-label="交付趋势">
+            <div class="panel-heading">
+              <div>
+                <div class="section-eyebrow"><span class="section-indicator" aria-hidden="true"></span>02 · 交付趋势</div>
+                <h2 class="panel-title">开发与上线节奏</h2>
+                <p class="section-subtitle">接入数据后展示逐周任务完成与上线曲线。</p>
+              </div>
+            </div>
+            <div class="chart-box chart-box--tall"><div class="empty-state"><strong>数据源待接入</strong><p>任务 / 提交 / 发布记录接入后，此处将展示交付趋势折线图。</p></div></div>
+          </section>
+          <section class="surface analysis-panel" aria-label="成员负载">
+            <div class="panel-heading">
+              <div>
+                <div class="section-eyebrow"><span class="section-indicator" aria-hidden="true"></span>03 · 成员负载</div>
+                <h2 class="panel-title">开发者任务分布</h2>
+                <p class="section-subtitle">接入数据后展示各成员在办与已办任务。</p>
+              </div>
+            </div>
+            <div class="chart-box chart-box--tall"><div class="empty-state"><strong>数据源待接入</strong><p>人员任务数据接入后，此处将展示成员负载排行，支持点击下钻。</p></div></div>
+          </section>
+        </div>
+
+        <section class="surface trend-panel" aria-label="接入说明">
+          <div class="info-callout">
+            <strong>如何接入数据</strong>
+            <p>准备 <code>ai-data.json</code>（指标日报 / 任务记录 / 上线记录），放入仓库并扩展首页脚本即可；页面框架与下钻交互复用招聘看板的组件，无需重新开发。</p>
+          </div>
+        </section>
+      </div>
+
+      <div id="page-project" class="page" hidden>
+        <section class="overview-section" aria-label="项目总览">
+          <div class="section-heading">
+            <div>
+              <div class="section-eyebrow"><span class="section-indicator" aria-hidden="true"></span>01 · 项目总览</div>
+              <h2 class="section-title">项目经营总览</h2>
+              <p class="section-subtitle">项目健康度与交付进度的框架已就绪，等待接入项目数据源后自动填充。</p>
+            </div>
+            <span class="section-helper">数据源待接入</span>
+          </div>
+          <div class="kpi-grid">
+            <div class="metric-card">
+              <div class="metric-eyebrow">存量</div>
+              <div class="metric-label">进行中项目</div>
+              <span class="metric-value">—</span>
+              <div class="metric-sub"><span>处于交付周期的项目</span></div>
+            </div>
+            <div class="metric-card metric-card--gold">
+              <div class="metric-eyebrow">风险</div>
+              <div class="metric-label">风险项目</div>
+              <span class="metric-value">—</span>
+              <div class="metric-sub"><span>延期 / 阻塞 / 人员缺口</span></div>
+            </div>
+            <div class="metric-card metric-card--steel">
+              <div class="metric-eyebrow">结果</div>
+              <div class="metric-label">本月交付</div>
+              <span class="metric-value">—</span>
+              <div class="metric-sub"><span>验收通过的项目</span></div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-eyebrow">过程</div>
+              <div class="metric-label">待验收里程碑</div>
+              <span class="metric-value">—</span>
+              <div class="metric-sub"><span>开发完成待确认</span></div>
+            </div>
+          </div>
+          <div class="process-strip">
+            <div class="process-item"><span class="process-label">立项评审</span><span class="process-value">—</span><span class="process-note">需求与预算确认</span></div>
+            <div class="process-item"><span class="process-label">排期中</span><span class="process-value">—</span><span class="process-note">资源与计划编排</span></div>
+            <div class="process-item"><span class="process-label">交付中</span><span class="process-value">—</span><span class="process-note">按里程碑推进</span></div>
+            <div class="process-item"><span class="process-label">已交付</span><span class="process-value">—</span><span class="process-note">客户验收完成</span></div>
+          </div>
+        </section>
+
+        <section class="surface trend-panel" aria-label="项目明细">
+          <div class="panel-heading">
+            <div>
+              <div class="section-eyebrow"><span class="section-indicator" aria-hidden="true"></span>02 · 项目明细</div>
+              <h2 class="panel-title">项目清单与进度</h2>
+              <p class="section-subtitle">接入数据后展示项目列表：负责人、里程碑、进度条与风险标记，支持点击下钻到任务级。</p>
+            </div>
+          </div>
+          <div class="chart-box"><div class="empty-state"><strong>数据源待接入</strong><p>项目台账数据接入后，此处将展示项目表格与健康度标记。</p></div></div>
+          <div class="info-callout">
+            <strong>如何接入数据</strong>
+            <p>准备 <code>project-data.json</code>（项目台账 / 里程碑 / 风险记录），放入仓库并扩展首页脚本即可；复用现有表格与下钻组件。</p>
+          </div>
+        </section>
+      </div>
     </main>
   </div>
 

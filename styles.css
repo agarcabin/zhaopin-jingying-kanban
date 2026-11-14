@@ -356,6 +356,27 @@ button.hg-bar:hover { filter: brightness(1.08); }
 .legend-item .dot { width: 9px; height: 9px; border-radius: 2px; flex: none; }
 .legend-item strong { color: var(--text); font-variant-numeric: tabular-nums; }
 
+/* ---------- 页面切换导航 ---------- */
+.page-nav { border-top: 1px solid var(--line); background: var(--surface); }
+.page-nav-inner {
+  max-width: 1280px; margin: 0 auto; padding: 0 28px;
+  display: flex; gap: 24px; overflow-x: auto; scrollbar-width: none;
+}
+.page-nav-inner::-webkit-scrollbar { display: none; }
+.page-nav-link {
+  display: inline-block; padding: 10px 2px 8px; margin-bottom: -1px;
+  color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 500;
+  border-bottom: 2px solid transparent; white-space: nowrap;
+  transition: color .15s ease;
+}
+.page-nav-link:hover { color: var(--text); }
+.page-nav-link.is-active { color: var(--text); font-weight: 650; border-bottom-color: var(--red); }
+.chart-box .empty-state { display: grid; place-content: center; height: 100%; }
+.info-callout code {
+  font-family: ui-monospace, Consolas, monospace; font-size: 12.5px;
+  background: #e3ebf1; border-radius: 3px; padding: 1px 5px; color: var(--navy-deep);
+}
+
 /* ---------- 响应式 ---------- */
 @media (max-width: 960px) {
   .kpi-grid, .process-strip { grid-template-columns: repeat(2, 1fr); }
