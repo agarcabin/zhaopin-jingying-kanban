@@ -12,7 +12,7 @@ const stamp = v => v ? String(v).slice(0, 16).replace('T', ' ').replaceAll('-', 
 
 let data = null;
 let PEOPLE = [];
-const state = { mode: 'day', day: '', from: '', to: '', preset: 'latest' };
+const state = { mode: 'range', day: '', from: '', to: '', preset: 'all' };
 const charts = { client: null, people: null, trend: null, ai: null, proj: null };
 
 const METRIC_NOTES = {
@@ -1005,7 +1005,7 @@ async function init() {
     } else if (['latest', 'week', 'month', 'all'].includes(view)) {
       setPreset(view);
     } else {
-      setPreset('latest');
+      setPreset('all');
     }
     $('load-state').hidden = true;
     $('app-shell').hidden = false;
