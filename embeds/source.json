@@ -2,7 +2,7 @@
   "source_name": "企业微信在线表格《创新招聘组数据》",
   "source_url": "https://doc.weixin.qq.com/sheet/e3_AQsA_wYCAFMCNYd3nGEL1QQ6zjpQz",
   "snapshot": "2026-11-15",
-  "snapshot_generated_at": "2026-11-15 14:13",
+  "snapshot_generated_at": "2026-11-15 14:27",
   "latest_report": "2026-11-14",
   "data_range": {
     "from": "2026-10-09",
@@ -22,5 +22,5 @@
   "chart_version": "5.5.0",
   "chart_sha256": "42f8329d989b6f6539dd2b15bbdf0d82025762ac112fbb60dc57b27d7bcf3946",
   "built_by": "recruit-daily-pipeline/scripts/build_workbench.py",
-  "built_at": "2026-11-15 14:13"
+  "built_at": "2026-11-15 14:27"
 }
