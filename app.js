@@ -203,7 +203,7 @@ function renderKPI(b) {
   const hireMain = metricRow('核实入职'); // 主表口径（按入职日期）
   const fu = followupCounts();
   const cards = [
-    { cls: 'metric-card--hire', eyebrow: '入职结果 · 主表口径', label: '入职人次', value: hireMain, note: '按入职日期 · 试岗当天离职已排除', sub: (data.followup_records || []).length ? `实际入职1天：${num(fu.rv1)}人，7天及以上：${num(fu.rv7)}人` : '', action: 'metric', metric: '核实入职' },
+    { cls: 'metric-card--hire', eyebrow: '入职结果 · 主表口径', label: '入职人次', value: hireMain, note: '按入职日期 · 试岗当天离职已排除', sub: (data.followup_records || []).length ? `实际入职 一天 ${num(fu.rv1)} 人，七天 ${num(fu.rv7)} 人` : '', action: 'metric', metric: '核实入职' },
     { cls: 'metric-card--gold', eyebrow: '面试结果 · 批次口径', label: '面试通过', value: b.pass, note: `已反馈通过率 ${pct(b.pass, b.pass + b.nopass)}`, sub: `结果待补 ${b.ppend}`, action: 'stage', stage: 'passed' },
     { cls: '', eyebrow: '面试推进 · 批次口径', label: '实际到面', value: b.arr, note: `登记 ${b.n} 人 · 未到面 ${b.noarr}`, sub: `到面待补 ${b.apend}`, action: 'stage', stage: 'attended' },
     { cls: 'metric-card--steel', eyebrow: '邀约登记 · 批次口径', label: '发出邀约', value: b.n, note: '按登记日期统计', action: 'stage', stage: 'invite' }
@@ -489,8 +489,8 @@ function showDetail(d) {
       const fu = (data.followup_records || []).filter(f => f.iv >= (state.mode === 'day' ? state.day : state.from));
       if (fu.length) {
         body += `<h3>入职后回访</h3>${simpleTable(['回访节点', '在职人数'], [
-          ['实际入职1天', num(fu.filter(f => f.rv1 === '在职').length)],
-          ['7天及以上', num(fu.filter(f => f.rv7 === '在职').length)]
+          ['实际入职 一天', num(fu.filter(f => f.rv1 === '在职').length)],
+          ['七天', num(fu.filter(f => f.rv7 === '在职').length)]
         ])}`;
         const l1 = fu.filter(f => f.rv1 && f.rv1 !== '在职').length;
         const l7 = fu.filter(f => f.rv7 && f.rv7 !== '在职').length;
