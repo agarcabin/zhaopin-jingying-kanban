@@ -198,6 +198,43 @@ function followupCounts() {
   return { rv1: inR.filter(f => f.rv1 === '在职').length, rv7: inR.filter(f => f.rv7 === '在职').length, total: inR.length };
 }
 
+// ---------- 渲染：人员数据表（05 · 全流程每人数据） ----------
+function renderPersonTable() {
+  const el = $('person-table');
+  if (!el) return;
+  const fu = data.followup_records || [];
+  const from = state.mode === 'day' ? state.day : state.from;
+  const rows = PEOPLE.map(p => {
+    const pb = personBatches(p);
+    const mine = fu.filter(f => f.iv >= from && f.p === p);
+    return {
+      p,
+      comm: metricRow('我沟通', p),
+      wecom: metricRow('企微添加数', p),
+      invite: pb.n,
+      arr: pb.arr,
+      pass: pb.pass,
+      hire: metricRow('核实入职', p),
+      rv1: mine.filter(f => f.rv1 === '在职').length,
+      rv7: mine.filter(f => f.rv7 === '在职').length
+    };
+  }).sort((a, b) => b.hire - a.hire || b.pass - a.pass || b.invite - a.invite || a.p.localeCompare(b.p, 'zh-CN'));
+  const sum = k => rows.reduce((a, r) => a + (r[k] || 0), 0);
+  el.innerHTML = `<div class="detail-table-wrap"><table class="detail-table person-table"><thead><tr>
+      <th>招聘专员</th><th>我沟通</th><th>企微添加</th><th>发出邀约</th><th>实际到面</th><th>面试通过</th><th>入职人次</th><th>实际入职 一天</th><th>实际入职 七天</th>
+    </tr></thead><tbody>
+    ${rows.map(r => `<tr>
+      <th scope="row"><a href="#" data-action="person" data-person="${esc(r.p)}">${esc(r.p)}</a></th>
+      <td>${num(r.comm)}</td><td>${num(r.wecom)}</td><td>${num(r.invite)}</td><td>${num(r.arr)}</td><td>${num(r.pass)}</td><td>${num(r.hire)}</td><td>${num(r.rv1)}</td><td>${num(r.rv7)}</td>
+    </tr>`).join('')}
+    <tr class="person-table__total">
+      <th scope="row">合计</th>
+      <td>${num(sum('comm'))}</td><td>${num(sum('wecom'))}</td><td>${num(sum('invite'))}</td><td>${num(sum('arr'))}</td><td>${num(sum('pass'))}</td><td>${num(sum('hire'))}</td><td>${num(sum('rv1'))}</td><td>${num(sum('rv7'))}</td>
+    </tr>
+    </tbody></table></div>
+    <p class="source-note" style="margin-top:10px">口径：我沟通/企微添加按记录与添加日期；邀约·到面·通过按登记批次；入职人次按入职日期（试岗当天离职已排除）；实际入职 一天/七天 = 回访时仍在职，按入职日期不早于区间起点累计（回访数据更新于 ${esc(((data.followup_meta?.captured_at) || '').replace('T', ' '))}）。</p>`;
+}
+
 // ---------- 渲染：KPI ----------
 function renderKPI(b) {
   const hireMain = metricRow('核实入职'); // 主表口径（按入职日期）
@@ -699,6 +736,7 @@ function render() {
   renderFunnel(b);
   renderClientChart();
   renderPeopleChart();
+  renderPersonTable();
   renderTrend();
   renderAttention(b);
   $('source-footer').innerHTML = `<span>来源：企业微信在线表格《创新招聘组数据》快照（与正式版看板同源）</span><span>源表生成 ${stamp(data.meta.generated_at)}</span><span>共 ${data.invite_records.length} 条邀约记录 · ${PEOPLE.length} 名招聘专员</span>`;

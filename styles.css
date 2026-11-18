@@ -326,6 +326,9 @@ button.hg-bar:hover { filter: brightness(1.08); }
 .detail-table tbody tr:last-child td, .data-table tbody tr:last-child td { border-bottom: 0; }
 .detail-table tbody tr:hover td, .data-table tbody tr:hover td { background: #f2f6f9; }
 .detail-table th[scope="row"], .data-table th[scope="row"] { font-weight: 600; color: var(--text); }
+.person-table__total td, .person-table__total th { font-weight: 650; color: var(--navy); background: #f7f9fb; border-top: 1px solid var(--navy); }
+.person-table td { text-align: right; }
+.person-table thead th:not(:first-child) { text-align: right; }
 .text-link {
   border: 0; background: transparent; color: var(--navy); padding: 0;
   font-weight: 500; text-decoration: none;
