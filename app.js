@@ -15,6 +15,67 @@ let PEOPLE = [];
 const state = { mode: 'range', day: '', from: '', to: '', preset: 'all' };
 const charts = { client: null, people: null, trend: null, ai: null, proj: null, jwTrend: null, jwPerson: null };
 
+// ---------- 莫奈色系 · 人员固定色（项目池角色与加微曲线共用，按人名固定，不随排序变化） ----------
+const PERSON_COLORS = {
+  '冯佳豪': '#6e93b6', // 雾霭蓝 · 日出·印象
+  '徐圣洋': '#8fb0a1', // 睡莲绿
+  '吕宁':   '#9c8ec4', // 紫藤紫
+  '李余梦': '#c793a6', // 玫瑰粉
+  '柯汪珽': '#c9a15e', // 干草金
+  '金凯健': '#6fa3a0', // 青瓷青
+  '柴海良': '#b4796a', // 陶土赭
+  '李建江': '#7b89a6', // 晨雾蓝灰
+  '戴刚烈': '#a5a27e'  // 橄榄灰绿
+};
+const PERSON_FALLBACK_COLORS = ['#7fa8b8', '#a9a0c9', '#c0a876', '#8fb6a8', '#c79ba2'];
+function personColor(name) {
+  if (PERSON_COLORS[name]) return PERSON_COLORS[name];
+  let h = 0;
+  for (const ch of String(name)) h = (h * 31 + ch.codePointAt(0)) >>> 0;
+  return PERSON_FALLBACK_COLORS[h % PERSON_FALLBACK_COLORS.length];
+}
+
+// ---------- 项目状态口径（补充口径，写在代码而非快照：快照被日常重建覆盖时不丢失） ----------
+// 来源：企微表格《合作项目情况表》项目状态列，2026-11-19 录入。项目暂停/恢复时更新此名单。
+const PAUSED_PROJECTS = ['嘉兴宜兴环球微晶', '宁波秋水外包', '宁波镇海达尔', '嘉兴轩孚外包（星驱科技）'];
+const PROJECT_STATUS_NOTE = '项目状态于 2026-11-19 按企微表格《合作项目情况表》「项目状态」列录入；暂停项目不计入项目池，保留在累计合作项目中。';
+const isPaused = name => PAUSED_PROJECTS.includes(name);
+
+// 正式项目名 ↔ 邀约登记/BOSS底表简称映射（用于「已招到人数」统计与跨模块互通）
+const PROJECT_ALIASES = {
+  '温州合达外包': ['合达电子', '合达'],
+  '温州泰昌铁塔': ['泰昌铁塔'],
+  '温州天超电器': ['天超'],
+  '温州美硕电气': ['美硕'],
+  '温州新亚电子': ['新亚'],
+  '宁波三峰机械': ['三峰', '三峰机械'],
+  '宁波博格华纳': ['博格华纳', '博格'],
+  '宁波慈兴集团': ['慈兴', '慈兴轴承'],
+  '宁波东睦新材料': ['东睦新材料'],
+  '嘉兴轩孚外包（星驱科技）': ['星驱科技'],
+  '嘉兴宜兴环球微晶': ['环球微晶'],
+  '宁波秋水外包': ['秋水'],
+  '宁波镇海达尔': ['达尔'],
+  '福建骏鹏智能': ['骏鹏'],
+  '美康生物科技': ['美康'],
+  'AGV工程师': ['AGV']
+};
+const POOL_TO_PROJECT = {
+  '达尔实业': '宁波镇海达尔', '美康': '美康生物科技', '天超电器': '温州天超电器',
+  '星驱科技': '嘉兴轩孚外包（星驱科技）', '东睦集团': '宁波东睦新材料', '合达电子': '温州合达外包',
+  '美硕电子': '温州美硕电气', '秋水外包': '宁波秋水外包', '福建骏鹏': '福建骏鹏智能',
+  '博格华纳': '宁波博格华纳', '泰昌铁塔': '温州泰昌铁塔', '慈兴集团': '宁波慈兴集团',
+  '三峰': '宁波三峰机械', '新亚': '温州新亚电子', '宜兴环球微晶': '嘉兴宜兴环球微晶'
+};
+const ALIAS_TO_PROJECT = {};
+Object.entries(PROJECT_ALIASES).forEach(([proj, arr]) => arr.forEach(a => { ALIAS_TO_PROJECT[a] = proj; }));
+function projectAliases(name) { return [name, ...(PROJECT_ALIASES[name] || [])]; }
+// 项目累计已招到人数（批次口径：邀约登记中当前状态为入职的记录）
+function projectHires(name) {
+  const keys = projectAliases(name);
+  return data.invite_records.filter(r => r.ob === '入职' && keys.includes(r.proj));
+}
+
 const METRIC_NOTES = {
   '发布岗位数': '按当日后台记录行计；区间显示最近一个有日报日的报表值，不跨日求和。',
   'BOSS帐号': '按当日后台记录行计；区间显示最近一个有日报日的报表值。',
@@ -289,10 +350,11 @@ function renderCoverage(b) {
 }
 
 // ---------- 渲染：漏斗 ----------
-function funnelLayer({ name, v, w, bg, fg, rate, side, stage }) {
+function funnelLayer({ name, v, w, bg, fg, rate, side, stage, pending }) {
+  const cls = pending ? 'hg-bar hg-bar--pending' : 'hg-bar';
   const bar = stage
-    ? `<button class="hg-bar" style="width:${w}%;background:${bg};color:${fg}" data-action="stage" data-stage="${stage}" aria-label="查看${name}明细"><span class="bn">${name} ${num(v)}</span>${rate ? `<span class="bp">${rate}</span>` : ''}</button>`
-    : `<div class="hg-bar" style="width:${w}%;background:${bg};color:${fg}"><span class="bn">${name} ${num(v)}</span>${rate ? `<span class="bp">${rate}</span>` : ''}</div>`;
+    ? `<button class="${cls}" style="width:${w}%;background:${bg};color:${fg}" data-action="stage" data-stage="${stage}" aria-label="查看${name}明细"><span class="bn">${name} ${num(v)}</span>${rate ? `<span class="bp">${rate}</span>` : ''}</button>`
+    : `<div class="${cls}" style="width:${w}%;background:${bg};color:${fg}"><span class="bn">${name} ${num(v)}</span>${rate ? `<span class="bp">${rate}</span>` : ''}</div>`;
   return `<div class="hg-layer${stage === 'hired' ? ' hg-waist' : ''}">${bar}<div class="hg-side">${side}</div></div>`;
 }
 function renderFunnel(b) {
@@ -327,8 +389,8 @@ function renderFunnel(b) {
   html += funnelLayer({ name: '入职1天回访', v: b.rv1, w: 26, bg: '#e3eaf0', fg: '#41576b', side: rvSide(b.rv1, true), stage: 'rv1' });
   html += funnelLayer({ name: '3天回访', v: b.rv3, w: 38, bg: '#d3dee7', fg: '#41576b', side: rvSide(b.rv3), stage: 'rv3' });
   html += funnelLayer({ name: '7天回访', v: b.rv7, w: 52, bg: '#c0d0dd', fg: '#33526b', side: rvSide(b.rv7), stage: 'rv7' });
-  html += funnelLayer({ name: '入职30天', w: 68, side: '待建字段：邀约表新增「入职30天」', shell: true });
-  html += funnelLayer({ name: '老带新', w: 84, side: '待建字段：邀约表新增「老带新」', shell: true });
+  html += funnelLayer({ name: '入职30天', w: 68, bg: '#e3eaf0', fg: '#7d8b99', side: '待建字段：邀约表新增「入职30天」', pending: true });
+  html += funnelLayer({ name: '老带新', w: 84, bg: '#e9eff4', fg: '#7d8b99', side: '待建字段：邀约表新增「老带新」', pending: true });
   $('funnel').innerHTML = html;
   const fb = b.pass + b.nopass;
   $('funnel-note').innerHTML = `<b>口径</b>：触达→收获简历→企微→邀约各层来自不同来源（BOSS 后台 / 企微 / 邀约登记），非同一批候选人，各层转化率仅作量级参考；<b>邀约→到面→通过→入职为同一批登记人选的真实追踪，转化率可比</b>。已反馈面试通过率 ${pct(b.pass, fb)}（${b.pass}/${fb}，未反馈不计分母）。点击各层查看人员与候选人明细。`;
@@ -511,6 +573,13 @@ function recordsTable(rs, opts = {}) {
   return `<div class="detail-table-wrap"><table class="detail-table"><thead><tr>${['登记日', '候选人', '岗位', '项目', '专员', '到面状态', '面试结果', '入职', '实际面试日'].map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rs.map(r => `<tr><th scope="row">${short(r.d)}</th><td>${esc(r.cand)}</td><td>${esc(r.pos)}</td><td>${opts.noClientLink ? esc(r.proj) : clientLink(r.proj)}</td><td>${personLink(r.p)}</td><td>${r.a === '到面' ? '<span class="badge badge--teal">到面</span>' : r.a === '未到面' ? '<span class="badge badge--gray">未到面</span>' : '<span class="badge badge--amber">待补</span>'}</td><td>${r.ps === '通过' ? '<span class="badge badge--teal">通过</span>' : r.ps === '未通过' ? '<span class="badge badge--gray">未通过</span>' : '<span class="badge badge--amber">待补</span>'}</td><td>${r.ob === '入职' ? '<span class="badge badge--teal">入职</span>' : r.ob === '试岗离职' ? '<span class="badge badge--amber">试岗离职</span>' : '—'}</td><td>${r.iv ? short(r.iv) : '—'}</td></tr>`).join('')}</tbody></table></div>`;
 }
 function statusBadge(r) { return r; }
+// 回访状态三色：在职=绿，待补（空）=黄，否/离职/放弃=红
+function rvBadge(v) {
+  if (v === '在职') return '<span class="badge badge--green">在职</span>';
+  if (!v) return '<span class="badge badge--amber">待补</span>';
+  if (/放弃|离职|否/.test(v)) return `<span class="badge badge--red">${esc(v)}</span>`;
+  return esc(v);
+}
 
 function showDetail(d) {
   const subtitle = rangeLabel();
@@ -526,8 +595,8 @@ function showDetail(d) {
       const fu = (data.followup_records || []).filter(f => f.iv >= (state.mode === 'day' ? state.day : state.from));
       if (fu.length) {
         body += `<h3>入职后回访</h3>${simpleTable(['回访节点', '在职人数'], [
-          ['实际入职 一天', num(fu.filter(f => f.rv1 === '在职').length)],
-          ['七天', num(fu.filter(f => f.rv7 === '在职').length)]
+          ['<button class="text-link" data-action="stage" data-stage="rv1">实际入职 一天 ↗</button>', num(fu.filter(f => f.rv1 === '在职').length)],
+          ['<button class="text-link" data-action="stage" data-stage="rv7">七天 ↗</button>', num(fu.filter(f => f.rv7 === '在职').length)]
         ])}`;
         const l1 = fu.filter(f => f.rv1 && f.rv1 !== '在职').length;
         const l7 = fu.filter(f => f.rv7 && f.rv7 !== '在职').length;
@@ -589,7 +658,7 @@ function renderStage(stage, subtitle) {
     const rs = inRangeRecords(r => r.ob !== '无' && r[key]);
     let body = `<div class="detail-grid">${stat(meta.title, rs.length, `入职 ${b.obAll} 人中已回访`)}${stat('入职总数（批次）', b.obAll, '含试岗离职')}</div>`;
     if (b.obAll - rs.length > 0) body += `<div class="info-callout"><strong>待补</strong><p>另有 ${b.obAll - rs.length} 条入职尚未登记该节点回访。</p></div>`;
-    body += `<h3>回访明细</h3>${simpleTable(['候选人', '项目', '专员', '入职状态', '1天', '3天', '7天'], inRangeRecords(r => r.ob !== '无').map(r => [esc(r.cand), clientLink(r.proj), personLink(r.p), r.ob === '入职' ? '入职' : '试岗离职', esc(r.rv1 || '待补'), esc(r.rv3 || '待补'), esc(r.rv7 || '待补')]))}`;
+    body += `<h3>回访明细</h3>${simpleTable(['候选人', '项目', '专员', '入职状态', '1天', '3天', '7天'], inRangeRecords(r => r.ob !== '无').map(r => [esc(r.cand), clientLink(r.proj), personLink(r.p), r.ob === '入职' ? '<span class="badge badge--blue">入职</span>' : '<span class="badge badge--amber">试岗离职</span>', rvBadge(r.rv1), rvBadge(r.rv3), rvBadge(r.rv7)]))}`;
     setDetail(meta.kicker, meta.title, subtitle, body);
     return;
   }
@@ -652,6 +721,7 @@ function renderPerson(person, subtitle) {
     { label: '未到面', value: pb.noarr, color: '#dbe1e7' },
     { label: '待补', value: pb.apend, color: '#c09a4e' }
   ], pb.n);
+  if (jwData) body += `<p class="cross-links"><span class="subtle">加微流水：</span><button class="text-link" data-action="jw-person" data-person="${esc(person)}">查看 ${esc(person)} 的加微明细 ↗</button></p>`;
   if (pb.apend || pb.ppend) body += `<div class="info-callout"><strong>需要确认</strong><p>${pb.apend ? `到面状态待补 ${pb.apend} 条；` : ''}${pb.ppend ? `面试结果待补 ${pb.ppend} 条。` : ''}</p></div>`;
   body += `<h3>参与项目</h3>${clients.length ? simpleTable(['项目', '邀约', '到面', '通过', '入职', '入职1天', '岗位'], clients.map(c => [clientLink(c.name), c.n, c.arr, c.pass, c.onb, c.onb1, esc([...c.jobs].slice(0, 3).join('、'))])) : '<p class="source-note">所选区间该人员没有邀约登记记录。</p>'}`;
   body += `<h3>完整日报指标</h3>${simpleTable(['指标', '数量', '说明'], Object.keys(METRIC_NOTES).map(k => [esc(k), num(metricRow(k, person)), esc(METRIC_NOTES[k])]))}`;
@@ -663,12 +733,20 @@ function renderClient(client, subtitle) {
   const c = clientsInRange().find(x => x.name === client);
   if (!c) { setDetail('项目详情', client, subtitle, '<p class="source-note">该项目在当前所选区间没有邀约登记记录。</p>'); return; }
   const fb = c.pass + c.nopass;
+  const projName = ALIAS_TO_PROJECT[client] || projData?.projects?.find(p => p.name === client)?.name || null;
+  const projIdx = projName ? projData.projects.findIndex(p => p.name === projName) : -1;
+  const poolIdx = projName ? (projData._pools || projData.project_pools || []).findIndex(x => POOL_TO_PROJECT[x.client] === projName) : -1;
+  const crossLinks = [
+    projIdx >= 0 ? `<button class="text-link" data-action="proj" data-i="${projIdx}">合作项目档案 ↗</button>` : '',
+    poolIdx >= 0 ? `<button class="text-link" data-action="pool" data-i="${poolIdx}">项目池（BOSS账号）↗</button>` : ''
+  ].filter(Boolean).join('　');
   let body = `<div class="detail-grid">
     ${stat('发出邀约', c.n, '登记批次')}
     ${stat('实际到面', c.arr, `到面率 ${pct(c.arr, c.n)}`)}
     ${stat('面试通过', c.pass, fb ? `已反馈通过率 ${pct(c.pass, fb)}` : '')}
     ${stat('入职', c.onb, [c.quit ? `试岗离职 ${c.quit}` : '', `入职1天 ${c.onb1} 人`].filter(Boolean).join(' · '))}
-  </div>`;
+  </div>
+  ${crossLinks ? `<p class="cross-links">${crossLinks}</p>` : ''}`;
   body += statusBlock('邀约推进', [
     { label: '已到面', value: c.arr, color: '#6d8ea8' },
     { label: '未到面', value: c.noarr, color: '#dbe1e7' },
@@ -807,6 +885,15 @@ function bind() {
     render();
   });
   $('open-methodology').addEventListener('click', () => showDetail({ type: 'methodology' }));
+  document.querySelectorAll('[data-jw-scope]').forEach(b => b.addEventListener('click', () => {
+    jwTrendScope = b.dataset.jwScope;
+    document.querySelectorAll('[data-jw-scope]').forEach(x => {
+      const active = x === b;
+      x.classList.toggle('is-active', active);
+      x.setAttribute('aria-pressed', String(active));
+    });
+    renderJwTrend();
+  }));
   const aiSearch = $('ai-search-input');
   if (aiSearch) aiSearch.addEventListener('input', () => { aiQuery = aiSearch.value.trim().toLowerCase(); renderAiBoard(); });
   document.addEventListener('click', e => {
@@ -1062,8 +1149,10 @@ function renderProject() {
   const main = ps.filter(p => p.recruit === '主招').length;
   const worker = ps.filter(p => p.category.includes('普工')).length;
   const white = ps.filter(p => p.category.includes('白领') || p.category.includes('技工')).length;
+  const activeProjects = ps.filter(p => !isPaused(p.name));
+  const pausedProjects = ps.filter(p => isPaused(p.name));
   $('proj-kpi').innerHTML = [
-    { eyebrow: '存量', label: '正式合作项目', value: ps.length, note: '已确认合作 · 点击查看清单', cls: '', detail: 'proj-all' },
+    { eyebrow: '存量', label: '累计合作项目', value: ps.length, note: `进行中 ${activeProjects.length} · 暂停 ${pausedProjects.length}（不计入项目池）`, cls: '', detail: 'proj-all' },
     { eyebrow: '重点', label: '主招项目', value: main, note: '主招 / 辅招 / 试招分类', cls: 'metric-card--steel', detail: 'proj-main' },
     { eyebrow: '覆盖', label: '覆盖城市', value: cities.length, note: cities.join(' · '), cls: '', detail: 'proj-cities' },
     { eyebrow: '储备', label: '跟进中项目', value: projData.following.length, note: '尚未正式确认', cls: 'metric-card--gold', detail: 'proj-follow' }
@@ -1086,8 +1175,8 @@ function renderProject() {
 function projKpiDetail(kind) {
   const ps = projData.projects;
   if (kind === 'proj-all') {
-    setDetail('合作项目 · 下钻明细', '全部正式合作项目', `共 ${ps.length} 个`,
-      simpleTable(['项目', '类别', '主招', '城市', '负责业务', '费用'], ps.map(p => [`<a href="#" data-action="proj" data-i="${ps.indexOf(p)}">${esc(p.name)}</a>`, esc(p.category), esc(p.recruit || '—'), esc(p.city || '—'), esc(p.owner || '—'), esc(p.fee || '—')])));
+    setDetail('合作项目 · 下钻明细', '累计合作项目', `共 ${ps.length} 个 · 进行中 ${ps.filter(p => !isPaused(p.name)).length} · 暂停 ${ps.filter(p => isPaused(p.name)).length}`,
+      simpleTable(['项目', '状态', '类别', '主招', '城市', '负责业务', '费用'], ps.map(p => [`<a href="#" data-action="proj" data-i="${ps.indexOf(p)}">${esc(p.name)}</a>`, isPaused(p.name) ? '<span class="badge badge--gray">暂停</span>' : '<span class="badge badge--teal">进行中</span>', esc(p.category), esc(p.recruit || '—'), esc(p.city || '—'), esc(p.owner || '—'), esc(p.fee || '—')])) + `<div class="info-callout"><strong>口径</strong><p>${esc(PROJECT_STATUS_NOTE)}</p></div>`);
   } else if (kind === 'proj-main') {
     const m = ps.filter(p => p.recruit === '主招');
     setDetail('合作项目 · 下钻明细', `主招项目（${m.length} 个）`, '我方为主招聘方的项目',
@@ -1126,11 +1215,26 @@ function applyPoolWindow() {
       return { ...p, accounts, account_count: accounts.length };
     })
     .filter(p => p.accounts.length);
+  // 已暂停项目不计入现在的项目池（口径见 PROJECT_STATUS_NOTE）
+  projData._pools = projData._pools.filter(p => {
+    const proj = POOL_TO_PROJECT[p.client];
+    return !proj || !isPaused(proj);
+  });
+}
+function pausedPoolCount() {
+  return (projData.project_pools || []).filter(p => { const proj = POOL_TO_PROJECT[p.client]; return proj && isPaused(proj); }).length;
 }
 function renderProjPool() {
   applyPoolWindow();
   const pools = projData._pools;
-  if (projData.pool_meta) $('pool-snapshot').textContent = 'BOSS底表快照 · ' + stamp(projData.pool_meta.generated_at);
+  const ps = projData.projects;
+  const activeN = ps.filter(p => !isPaused(p.name)).length;
+  const pausedN = ps.filter(p => isPaused(p.name)).length;
+  const snapEl = $('pool-snapshot');
+  if (snapEl) {
+    const snap = projData.pool_meta ? 'BOSS底表快照 · ' + stamp(projData.pool_meta.generated_at) + ' · ' : '';
+    snapEl.textContent = snap + `在营项目池 ${pools.length} 个 · 累计合作项目 ${ps.length} 个（进行中 ${activeN} · 暂停 ${pausedN} 不计入）`;
+  }
   if (!pools.length) { $('proj-pool').innerHTML = '<p class="source-note">暂无项目池数据。</p>'; return; }
   $('proj-pool').innerHTML = pools.map((pool, i) => `
     <div class="pool-card surface" data-action="pool" data-i="${i}" role="button" tabindex="0" aria-label="查看${esc(pool.client)}项目池明细">
@@ -1138,18 +1242,27 @@ function renderProjPool() {
         <h3>${esc(pool.client)}</h3>
         <span class="pool-count">${pool.account_count} 个账号</span>
       </div>
-      <div class="pool-chips">${pool.accounts.map(a => `<span class="pool-chip">${esc(a.person)}<i>${a.job_count}岗</i></span>`).join('')}</div>
-    </div>`).join('');
+      <div class="pool-chips">${pool.accounts.map(a => `<span class="pool-chip" style="--pc:${personColor(a.person)}"><span class="pool-dot" aria-hidden="true"></span>${esc(a.person)}<i>${a.job_count}岗</i></span>`).join('')}</div>
+    </div>`).join('') + `<p class="source-note" style="margin-top:10px">${esc(PROJECT_STATUS_NOTE)}每个角色的颜色为莫奈色系固定色，与加微趋势曲线一致。</p>`;
 }
 function projPoolDetail(i) {
-  const pool = (projData._pools || projData.project_pools)[i];
+  const pools = projData._pools || projData.project_pools;
+  const pool = pools[i];
   const w = projData._poolWindow;
-  setDetail('项目池 · 明细', pool.client + ' 项目池', `共 ${pool.account_count} 个 BOSS 账号挂在该池 · 点击人名查看其账号岗位`, `
+  const projName = POOL_TO_PROJECT[pool.client] || null;
+  const projIdx = projName ? projData.projects.findIndex(p => p.name === projName) : -1;
+  const clientName = projName ? projectAliases(projName).find(a => data.invite_records.some(r => r.proj === a)) : null;
+  const crossLinks = [
+    projIdx >= 0 ? `<button class="text-link" data-action="proj" data-i="${projIdx}">合作项目档案 ↗</button>` : '',
+    clientName ? `<button class="text-link" data-action="client" data-client="${esc(clientName)}">招聘数据（邀约/到面/入职）↗</button>` : ''
+  ].filter(Boolean).join('　');
+  setDetail('项目池 · 明细', pool.client + ' 项目池', `共 ${pool.account_count} 个 BOSS 账号挂在该池 · 点击人名查看其招聘业绩与账号岗位`, `
     <h3>账号明细</h3>
     <div class="detail-table-wrap"><table class="detail-table"><thead><tr><th>账号（招聘人员）</th><th>挂靠岗位数</th><th>岗位</th><th>最近数据日</th><th>活跃天数</th></tr></thead><tbody>
-    ${pool.accounts.map(a => `<tr><th scope="row"><a href="#" data-action="person" data-person="${esc(a.person)}">${esc(a.person)}</a></th><td>${a.job_count}</td><td>${a.jobs.map(esc).join('、') || '—'}</td><td>${a.last_day || '—'}</td><td>${a.active_days}</td></tr>`).join('')}
+    ${pool.accounts.map(a => `<tr><th scope="row"><span class="person-dot" style="background:${personColor(a.person)}" aria-hidden="true"></span><a href="#" data-action="person" data-person="${esc(a.person)}">${esc(a.person)}</a></th><td>${a.job_count}</td><td>${a.jobs.map(esc).join('、') || '—'}</td><td>${a.last_day || '—'}</td><td>${a.active_days}</td></tr>`).join('')}
     </tbody></table></div>
-    <p class="source-note" style="margin-top:12px">项目池口径：该客户名下近 ${POOL_WINDOW_DAYS} 天（${w ? w.from + ' — ' + w.to : '快照窗口'}）有岗位发布记录的账号，历史挂靠不显示。数据来自 BOSS 底表快照${projData.pool_meta ? ' · ' + stamp(projData.pool_meta.generated_at) : ''}。</p>`);
+    ${crossLinks ? `<p class="cross-links" style="margin-top:10px">${crossLinks}</p>` : ''}
+    <p class="source-note" style="margin-top:12px">项目池口径：该客户名下近 ${POOL_WINDOW_DAYS} 天（${w ? w.from + ' — ' + w.to : '快照窗口'}）有岗位发布记录的账号，历史挂靠不显示；已暂停项目不计入项目池。数据来自 BOSS 底表快照${projData.pool_meta ? ' · ' + stamp(projData.pool_meta.generated_at) : ''}。</p>`);
 }
 function renderProjChart() {
   const el = $('proj-chart');
@@ -1183,19 +1296,37 @@ function renderProjSpecial() {
 }
 function renderProjTable() {
   const ps = projData.projects;
+  const fu = data.followup_records || [];
+  const projectFollowup = p => fu.filter(f => projectAliases(p.name).includes(f.proj));
   $('proj-table').innerHTML = `<div class="detail-table-wrap"><table class="detail-table"><thead><tr>
-    <th>岗位类别</th><th>项目名称</th><th>主招</th><th>城市</th><th>负责业务</th><th>确认合作</th><th>费用</th><th>当前需求</th><th aria-hidden="true"></th></tr></thead><tbody>
-    ${ps.map((p, i) => `<tr class="proj-row" data-action="proj" data-i="${i}">
-      <td>${esc(p.category) || '—'}</td><th scope="row">${esc(p.name)}</th>
+    <th>岗位类别</th><th>项目名称</th><th>主招</th><th>城市</th><th>负责业务</th><th>确认合作</th><th>费用</th><th>当前需求</th><th>入职人次</th><th>入职一天</th><th>入职七天</th><th aria-hidden="true"></th></tr></thead><tbody>
+    ${ps.map((p, i) => {
+      const hires = projectHires(p.name);
+      const fuP = projectFollowup(p);
+      const rv1 = fuP.filter(f => f.rv1 === '在职').length;
+      const rv7 = fuP.filter(f => f.rv7 === '在职').length;
+      return `<tr class="proj-row" data-action="proj" data-i="${i}">
+      <td>${esc(p.category) || '—'}</td><th scope="row">${esc(p.name)} ${isPaused(p.name) ? '<span class="badge badge--gray">暂停</span>' : '<span class="badge badge--teal">进行中</span>'}</th>
       <td>${p.recruit ? `<span class="badge ${p.recruit === '主招' ? 'badge--teal' : p.recruit === '辅招' ? 'badge--blue' : 'badge--gray'}">${esc(p.recruit)}</span>` : '—'}</td>
       <td>${esc(p.city) || '—'}</td><td>${esc(p.owner) || '—'}</td><td>${esc(p.date) || '—'}</td>
       <td>${esc(p.fee) || '—'}</td><td>${p.need ? `<span class="badge badge--amber">${esc(p.need)}</span>` : '—'}</td>
+      <td class="hire-cell">${hires.length ? `<b>${hires.length}</b> 人` : '<span class="muted">0</span>'}</td>
+      <td class="hire-cell">${rv1 ? `<b>${rv1}</b> 人` : '<span class="muted">0</span>'}</td>
+      <td class="hire-cell">${rv7 ? `<b>${rv7}</b> 人` : '<span class="muted">0</span>'}</td>
       <td class="row-arrow-cell" aria-hidden="true">↗</td>
-    </tr>`).join('')}</tbody></table></div>
-    <p class="source-note" style="margin-top:8px">点击项目行查看亮点、劣势、费用与合作细节。</p>`;
+    </tr>`;
+    }).join('')}</tbody></table></div>
+    <p class="source-note" style="margin-top:8px">点击项目行查看招到的人（哪天谁招的）、亮点、劣势、费用与合作细节。入职人次 = 邀约登记中入职状态累计；入职一天 / 入职七天 = 该项目入职者回访时仍在职的人数（回访数据更新于 ${esc(((data.followup_meta?.captured_at) || '').replace('T', ' '))}）。${esc(PROJECT_STATUS_NOTE)}</p>`;
 }
 function projDetail(i) {
   const p = projData.projects[i];
+  const hires = projectHires(p.name).slice().sort((a, b) => a.d.localeCompare(b.d));
+  const fuP = (data.followup_records || []).filter(f => projectAliases(p.name).includes(f.proj));
+  const fuRv1 = fuP.filter(f => f.rv1 === '在职').length;
+  const fuRv7 = fuP.filter(f => f.rv7 === '在职').length;
+  const pools = projData._pools || projData.project_pools;
+  const poolIdx = pools.findIndex(x => POOL_TO_PROJECT[x.client] === p.name);
+  const clientName = projectAliases(p.name).find(a => data.invite_records.some(r => r.proj === a));
   const grid = [
     kv('确认合作日期', p.date || '—'),
     kv('是否开票', p.billing || '—'),
@@ -1205,14 +1336,26 @@ function projDetail(i) {
     kv('城市', p.city || '—')
   ].join('');
   const info = (title, text) => text ? `<h3>${title}</h3><p class="source-note">${esc(text)}</p>` : '';
-  setDetail('合作项目 · 详情', p.name, `${p.category} · ${p.city}`, `
-    <div class="detail-grid">${grid}</div>
+  const crossLinks = [
+    poolIdx >= 0 ? `<button class="text-link" data-action="pool" data-i="${poolIdx}">查看项目池（BOSS账号）↗</button>` : '',
+    clientName ? `<button class="text-link" data-action="client" data-client="${esc(clientName)}">招聘数据（邀约/到面/入职）↗</button>` : ''
+  ].filter(Boolean).join('　');
+  setDetail('合作项目 · 详情', p.name, `${p.category} · ${p.city} · ${isPaused(p.name) ? '暂停' : '进行中'}`, `
+    <div class="detail-grid">
+      ${stat('入职人次', hires.length, '邀约登记入职累计 · 明细见下方「招到的人」')}
+      ${stat('入职一天', fuRv1, '1天回访时仍在职')}
+      ${stat('入职七天', fuRv7, '7天回访时仍在职')}
+      <div class="detail-stat"><span class="stat-label">项目状态</span><strong class="stat-value">${isPaused(p.name) ? '<span class="badge badge--gray">暂停</span>' : '<span class="badge badge--teal">进行中</span>'}</strong><small>暂停项目不计入项目池</small></div>
+      ${grid}
+    </div>
     ${info('费用', p.fee ? p.fee + (p.feeNote ? '（' + p.feeNote + '）' : '') : p.feeNote)}
     ${info('项目亮点', p.highlight)}
     ${info('项目劣势', p.weakness)}
     ${info('当前需求', p.need)}
     ${info('其他备注', p.note)}
-    <p class="source-note" style="margin-top:14px">信息为《合作项目情况表》快照，最新进展以源表为准。</p>`);
+    ${hires.length ? `<h3>招到的人</h3>${simpleTable(['日期', '候选人', '岗位', '谁招的'], hires.map(r => [pretty(r.d), esc(r.cand), esc(r.pos), personLink(r.p)]))}` : `<h3>招到的人</h3><p class="source-note">该项目暂无已入职登记；新入职随每日邀约登记更新。</p>`}
+    ${crossLinks ? `<p class="cross-links">${crossLinks}</p>` : ''}
+    <p class="source-note" style="margin-top:14px">信息为《合作项目情况表》快照，最新进展以源表为准。${esc(PROJECT_STATUS_NOTE)}</p>`);
 }
 function projCityDetail(city) {
   const ps = projData.projects.filter(p => p.city === city);
@@ -1272,20 +1415,53 @@ function renderJiawei() {
   renderJwRecords();
 }
 
+let jwTrendScope = 'all'; // all 累计 | month 本月 | week 本周
+const JW_TREND_SCOPES = { all: '累计', month: '本月', week: '本周' };
 function renderJwTrend() {
   const el = $('jw-trend');
   if (!el) return;
   if (!charts.jwTrend) charts.jwTrend = echarts.init(el);
-  const days = Object.keys(jwData.daily).sort();
-  charts.jwTrend.setOption({
-    grid: { left: 8, right: 20, top: 26, bottom: 0, containLabel: true },
-    tooltip: { trigger: 'axis', axisPointer: { type: 'line' } },
-    xAxis: { type: 'category', data: days.map(short), boundaryGap: false, axisLabel: { fontSize: 11, color: '#99937f' }, axisLine: { lineStyle: { color: '#c9c2ae' } }, axisTick: { show: false } },
-    yAxis: { type: 'value', minInterval: 1, splitLine: { lineStyle: { color: '#eae5d6' } }, axisLabel: { fontSize: 11, color: '#99937f' } },
-    series: [{ name: '加微', type: 'line', data: days.map(d => jwData.daily[d]), smooth: true, symbolSize: 6, lineStyle: { width: 2.5, color: '#33526b' }, itemStyle: { color: '#33526b' }, areaStyle: { color: 'rgba(51,82,107,.08)' }, cursor: 'pointer' }]
+  const allDays = Object.keys(jwData.daily).sort();
+  const to = jwData.meta.range.to;
+  const today = jwData.meta.today || to;
+  let from = allDays[0];
+  if (jwTrendScope === 'month') from = to.slice(0, 7) + '-01';
+  else if (jwTrendScope === 'week') {
+    const dt = new Date(today + 'T00:00:00');
+    from = shift(today, -((dt.getDay() + 6) % 7)); // 本周一
+  }
+  if (from < allDays[0]) from = allDays[0];
+  // 补齐日期序列（快照缺数的日期按 0 画，反映真实覆盖）
+  const seq = [];
+  let cur = from;
+  while (cur <= to && seq.length < 200) { seq.push(cur); cur = shift(cur, 1); }
+  const byDP = {};
+  jwData.records.forEach(r => {
+    if (r.d < from || r.d > to) return;
+    (byDP[r.d] = byDP[r.d] || {})[r.p] = (byDP[r.d][r.p] || 0) + 1;
   });
+  const peopleList = (jwData.by_person || []).map(x => x.person);
+  jwData.records.forEach(r => { if (!peopleList.includes(r.p)) peopleList.push(r.p); });
+  const series = [
+    { name: '全体合计', type: 'line', data: seq.map(d => jwData.daily[d] || 0), smooth: true, symbolSize: 5, lineStyle: { width: 2.5, color: '#33526b' }, itemStyle: { color: '#33526b' }, areaStyle: { color: 'rgba(51,82,107,.07)' }, z: 10, cursor: 'pointer' },
+    ...peopleList.map(p => ({
+      name: p, type: 'line', data: seq.map(d => (byDP[d] && byDP[d][p]) || 0),
+      smooth: true, symbolSize: 4, lineStyle: { width: 1.4, color: personColor(p) }, itemStyle: { color: personColor(p) }
+    }))
+  ];
+  charts.jwTrend.setOption({
+    grid: { left: 8, right: 20, top: 38, bottom: 0, containLabel: true },
+    legend: { top: 0, left: 0, type: 'scroll', itemWidth: 14, itemHeight: 3, textStyle: { fontSize: 11, color: '#6e6a5c' }, pageIconSize: 9 },
+    tooltip: {
+      trigger: 'axis', confine: true, axisPointer: { type: 'line' },
+      formatter: ps => `<b>${pretty(ps[0].axisValue ? seq[ps[0].dataIndex] : '')}</b>` + ps.filter(p => p.value > 0 || p.seriesName === '全体合计').map(p => `<br/>${p.marker}${esc(p.seriesName)} ${p.value ?? 0}`).join('')
+    },
+    xAxis: { type: 'category', data: seq.map(short), boundaryGap: false, axisLabel: { fontSize: 11, color: '#99937f' }, axisLine: { lineStyle: { color: '#c9c2ae' } }, axisTick: { show: false } },
+    yAxis: { type: 'value', minInterval: 1, splitLine: { lineStyle: { color: '#eae5d6' } }, axisLabel: { fontSize: 11, color: '#99937f' } },
+    series
+  }, true);
   charts.jwTrend.off('click');
-  charts.jwTrend.on('click', e => { if (e.componentType === 'series') jwDayDetail(days[e.dataIndex]); });
+  charts.jwTrend.on('click', e => { if (e.componentType === 'series' && seq[e.dataIndex]) jwDayDetail(seq[e.dataIndex]); });
 }
 
 function renderJwPerson() {
@@ -1335,6 +1511,7 @@ function jwPersonDetail(person) {
   rs.forEach(r => { byD[r.d] = (byD[r.d] || 0) + 1; });
   const days = Object.keys(byD).sort().slice(-14).reverse();
   let body = `<div class="detail-grid">${stat('加微总数', rs.length, `${jwData.meta.range.from} — ${jwData.meta.range.to}`)}${stat('近7日加微', last7, `${jwFrom(7)} 起`)}${stat('活跃天数', Object.keys(byD).length, '有加微记录的天数')}</div>`;
+  if (PEOPLE.includes(person)) body += `<p class="cross-links"><span class="subtle">招聘业绩：</span><button class="text-link" data-action="person" data-person="${esc(person)}">查看 ${esc(person)} 的招聘业绩 ↗</button></p>`;
   body += `<h3>按日分布（最近 ${days.length} 个活跃日）</h3>${simpleTable(['日期', '加微数'], days.map(d => [pretty(d), num(byD[d])]))}`;
   body += `<h3>加微明细</h3>${jwTable(rs, 100)}`;
   setDetail('加微看板 · 人员明细', person, `快照于 ${stamp(jwData.meta.captured_at)}`, body);
