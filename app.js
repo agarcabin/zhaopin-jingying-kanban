@@ -735,10 +735,10 @@ function renderClient(client, subtitle) {
   const fb = c.pass + c.nopass;
   const projName = ALIAS_TO_PROJECT[client] || projData?.projects?.find(p => p.name === client)?.name || null;
   const projIdx = projName ? projData.projects.findIndex(p => p.name === projName) : -1;
-  const poolIdx = projName ? (projData._pools || projData.project_pools || []).findIndex(x => POOL_TO_PROJECT[x.client] === projName) : -1;
+  const poolIdx = projName ? (projData.project_pools || []).findIndex(x => POOL_TO_PROJECT[x.client] === projName) : -1;
   const crossLinks = [
     projIdx >= 0 ? `<button class="text-link" data-action="proj" data-i="${projIdx}">合作项目档案 ↗</button>` : '',
-    poolIdx >= 0 ? `<button class="text-link" data-action="pool" data-i="${poolIdx}">项目池（BOSS账号）↗</button>` : ''
+    poolIdx >= 0 ? `<button class="text-link" data-action="pool" data-i="${poolIdx}">查看项目池 ↗</button>` : ''
   ].filter(Boolean).join('　');
   let body = `<div class="detail-grid">
     ${stat('发出邀约', c.n, '登记批次')}
@@ -1197,43 +1197,21 @@ function projKpiDetail(kind) {
   }
 }
 
-// ---------- 项目池（BOSS 账号 × 客户，谁的账号在哪个池里） ----------
-// 前端时效窗口：以全部账号最新 last_day 为锚点，仅保留近 14 天有岗位发布记录的账号。
-// 在渲染时计算（而非依赖数据文件），这样日常重建覆盖 project-data.json 也不会退回累计口径。
-const POOL_WINDOW_DAYS = 14;
-function applyPoolWindow() {
-  const pools = projData.project_pools || [];
-  const days = pools.flatMap(p => (p.accounts || []).map(a => a.last_day)).filter(Boolean).sort();
-  if (!days.length) { projData._pools = pools; projData._poolWindow = null; return; }
-  const anchor = new Date(days[days.length - 1] + 'T00:00:00');
-  const from = new Date(anchor); from.setDate(from.getDate() - (POOL_WINDOW_DAYS - 1));
-  const fromD = from.toISOString().slice(0, 10);
-  projData._poolWindow = { from: fromD, to: days[days.length - 1], days: POOL_WINDOW_DAYS };
-  projData._pools = pools
-    .map(p => {
-      const accounts = (p.accounts || []).filter(a => (a.last_day || '') >= fromD);
-      return { ...p, accounts, account_count: accounts.length };
-    })
-    .filter(p => p.accounts.length);
-  // 已暂停项目不计入现在的项目池（口径见 PROJECT_STATUS_NOTE）
-  projData._pools = projData._pools.filter(p => {
-    const proj = POOL_TO_PROJECT[p.client];
-    return !proj || !isPaused(proj);
-  });
-}
-function pausedPoolCount() {
-  return (projData.project_pools || []).filter(p => { const proj = POOL_TO_PROJECT[p.client]; return proj && isPaused(proj); }).length;
-}
+// ---------- 项目池（合作项目表口径：只展示现在在做的项目） ----------
+// 2026-11-19 起项目池数据来自企微表格《合作项目情况表》「合作项目表」sheet
+// （scripts/coop-sheet-snapshot.json → build-boards.mjs 生成 project_pools）：
+// 只保留项目状态=进行中的项目（暂停不计入），账号=该项目业务员列的非空登记值。
+// 旧的 BOSS 底表挂靠口径（近14天有岗位发布记录）会把已停做项目的历史记录也算进来
+// （如冯佳豪×天超电器），已废弃；数据文件即最终口径，渲染时不再做窗口裁剪。
 function renderProjPool() {
-  applyPoolWindow();
-  const pools = projData._pools;
+  const pools = projData.project_pools || [];
   const ps = projData.projects;
   const activeN = ps.filter(p => !isPaused(p.name)).length;
   const pausedN = ps.filter(p => isPaused(p.name)).length;
   const snapEl = $('pool-snapshot');
   if (snapEl) {
-    const snap = projData.pool_meta ? 'BOSS底表快照 · ' + stamp(projData.pool_meta.generated_at) + ' · ' : '';
-    snapEl.textContent = snap + `在营项目池 ${pools.length} 个 · 累计合作项目 ${ps.length} 个（进行中 ${activeN} · 暂停 ${pausedN} 不计入）`;
+    const cap = projData.pool_meta ? '合作项目表 · ' + (projData.pool_meta.captured_at || stamp(projData.pool_meta.generated_at)) + ' · ' : '';
+    snapEl.textContent = cap + `在营项目池 ${pools.length} 个 · 累计合作项目 ${ps.length} 个（进行中 ${activeN} · 暂停 ${pausedN} 不计入）`;
   }
   if (!pools.length) { $('proj-pool').innerHTML = '<p class="source-note">暂无项目池数据。</p>'; return; }
   $('proj-pool').innerHTML = pools.map((pool, i) => `
@@ -1242,27 +1220,28 @@ function renderProjPool() {
         <h3>${esc(pool.client)}</h3>
         <span class="pool-count">${pool.account_count} 个账号</span>
       </div>
-      <div class="pool-chips">${pool.accounts.map(a => `<span class="pool-chip" style="--pc:${personColor(a.person)}"><span class="pool-dot" aria-hidden="true"></span>${esc(a.person)}<i>${a.job_count}岗</i></span>`).join('')}</div>
-    </div>`).join('') + `<p class="source-note" style="margin-top:10px">${esc(PROJECT_STATUS_NOTE)}每个角色的颜色为莫奈色系固定色，与加微趋势曲线一致。</p>`;
+      <div class="pool-chips">${pool.accounts && pool.accounts.length ? pool.accounts.map(a => `<span class="pool-chip" style="--pc:${personColor(a.person)}"><span class="pool-dot" aria-hidden="true"></span>${esc(a.person)}<i>${a.count}</i></span>`).join('') : '<span class="source-note">进行中 · 暂无账号在挂</span>'}</div>
+    </div>`).join('') + `<p class="source-note" style="margin-top:10px">${esc(PROJECT_STATUS_NOTE)}账号为人名后的表格登记值；每个角色的颜色为莫奈色系固定色，与加微趋势曲线一致。</p>`;
 }
 function projPoolDetail(i) {
-  const pools = projData._pools || projData.project_pools;
-  const pool = pools[i];
-  const w = projData._poolWindow;
-  const projName = POOL_TO_PROJECT[pool.client] || null;
+  const pools = projData.project_pools || [];
+  const pool = pools[i] || {};
+  const meta = projData.pool_meta || {};
+  const cap = meta.captured_at || stamp(meta.generated_at || '');
+  const projName = pool.project || POOL_TO_PROJECT[pool.client] || null;
   const projIdx = projName ? projData.projects.findIndex(p => p.name === projName) : -1;
   const clientName = projName ? projectAliases(projName).find(a => data.invite_records.some(r => r.proj === a)) : null;
   const crossLinks = [
     projIdx >= 0 ? `<button class="text-link" data-action="proj" data-i="${projIdx}">合作项目档案 ↗</button>` : '',
     clientName ? `<button class="text-link" data-action="client" data-client="${esc(clientName)}">招聘数据（邀约/到面/入职）↗</button>` : ''
   ].filter(Boolean).join('　');
-  setDetail('项目池 · 明细', pool.client + ' 项目池', `共 ${pool.account_count} 个 BOSS 账号挂在该池 · 点击人名查看其招聘业绩与账号岗位`, `
+  setDetail('项目池 · 明细', pool.client + ' 项目池', `共 ${pool.account_count} 个账号在挂 · 点击人名查看其招聘业绩`, `
     <h3>账号明细</h3>
-    <div class="detail-table-wrap"><table class="detail-table"><thead><tr><th>账号（招聘人员）</th><th>挂靠岗位数</th><th>岗位</th><th>最近数据日</th><th>活跃天数</th></tr></thead><tbody>
-    ${pool.accounts.map(a => `<tr><th scope="row"><span class="person-dot" style="background:${personColor(a.person)}" aria-hidden="true"></span><a href="#" data-action="person" data-person="${esc(a.person)}">${esc(a.person)}</a></th><td>${a.job_count}</td><td>${a.jobs.map(esc).join('、') || '—'}</td><td>${a.last_day || '—'}</td><td>${a.active_days}</td></tr>`).join('')}
-    </tbody></table></div>
+    ${pool.accounts && pool.accounts.length ? `<div class="detail-table-wrap"><table class="detail-table"><thead><tr><th>业务员（账号）</th><th>登记数</th></tr></thead><tbody>
+    ${pool.accounts.map(a => `<tr><th scope="row"><span class="person-dot" style="background:${personColor(a.person)}" aria-hidden="true"></span><a href="#" data-action="person" data-person="${esc(a.person)}">${esc(a.person)}</a></th><td>${a.count}</td></tr>`).join('')}
+    </tbody></table></div>` : '<p class="source-note">该项目进行中，目前没有业务员账号在挂。</p>'}
     ${crossLinks ? `<p class="cross-links" style="margin-top:10px">${crossLinks}</p>` : ''}
-    <p class="source-note" style="margin-top:12px">项目池口径：该客户名下近 ${POOL_WINDOW_DAYS} 天（${w ? w.from + ' — ' + w.to : '快照窗口'}）有岗位发布记录的账号，历史挂靠不显示；已暂停项目不计入项目池。数据来自 BOSS 底表快照${projData.pool_meta ? ' · ' + stamp(projData.pool_meta.generated_at) : ''}。</p>`);
+    <p class="source-note" style="margin-top:12px">项目池口径：合作项目表中项目状态为「进行中」的项目（暂停不计入）；账号=该项目业务员列的非空登记值。数据来自企微表格《合作项目情况表》合作项目表 sheet · ${esc(cap)}。</p>`);
 }
 function renderProjChart() {
   const el = $('proj-chart');
@@ -1324,7 +1303,7 @@ function projDetail(i) {
   const fuP = (data.followup_records || []).filter(f => projectAliases(p.name).includes(f.proj));
   const fuRv1 = fuP.filter(f => f.rv1 === '在职').length;
   const fuRv7 = fuP.filter(f => f.rv7 === '在职').length;
-  const pools = projData._pools || projData.project_pools;
+  const pools = projData.project_pools;
   const poolIdx = pools.findIndex(x => POOL_TO_PROJECT[x.client] === p.name);
   const clientName = projectAliases(p.name).find(a => data.invite_records.some(r => r.proj === a));
   const grid = [
@@ -1337,7 +1316,7 @@ function projDetail(i) {
   ].join('');
   const info = (title, text) => text ? `<h3>${title}</h3><p class="source-note">${esc(text)}</p>` : '';
   const crossLinks = [
-    poolIdx >= 0 ? `<button class="text-link" data-action="pool" data-i="${poolIdx}">查看项目池（BOSS账号）↗</button>` : '',
+    poolIdx >= 0 ? `<button class="text-link" data-action="pool" data-i="${poolIdx}">查看项目池 ↗</button>` : '',
     clientName ? `<button class="text-link" data-action="client" data-client="${esc(clientName)}">招聘数据（邀约/到面/入职）↗</button>` : ''
   ].filter(Boolean).join('　');
   setDetail('合作项目 · 详情', p.name, `${p.category} · ${p.city} · ${isPaused(p.name) ? '暂停' : '进行中'}`, `

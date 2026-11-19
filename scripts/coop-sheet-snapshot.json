@@ -1,0 +1,46 @@
+{
+  "meta": {
+    "source": "企微表格《合作项目情况表》· 合作项目表 sheet",
+    "sheet_url": "https://doc.weixin.qq.com/sheet/e3_AeAAHwZdAI8CNo8QV1woDR1ylAZuT",
+    "captured_at": "2026-11-19",
+    "captured_from": "2026-11-19 用户提供的表格实时截图（当日企微机器人读取接口已达限额，由截图逐格核对录入）",
+    "note": "项目池唯一数据源。accounts 数字为表中业务员列的登记值；项目状态=暂停的项目不进入项目池。表内结构或数值变更时需更新本文件后重跑 build-boards.mjs。"
+  },
+  "recruiters": ["徐圣洋", "吕宁", "李建江", "柴海良", "冯佳豪", "李余梦", "柯汪珽", "金凯健"],
+  "pool_name_map": {
+    "温州合达外包": "合达电子",
+    "温州泰昌铁塔": "泰昌铁塔",
+    "温州天超电器": "天超电器",
+    "温州美硕电气": "美硕电子",
+    "温州新亚电子": "新亚",
+    "美康生物科技": "美康",
+    "AGV工程师": "开物机器人",
+    "福建骏鹏智能": "福建骏鹏",
+    "宁波博格华纳": "博格华纳",
+    "宁波三峰机械": "三峰",
+    "宁波慈兴集团": "慈兴集团",
+    "宁波东睦新材料": "东睦集团",
+    "嘉兴宜兴环球微晶": "宜兴环球微晶",
+    "宁波秋水外包": "秋水外包",
+    "宁波镇海达尔": "达尔实业",
+    "嘉兴轩孚外包": "星驱科技"
+  },
+  "projects": [
+    { "name": "温州合达外包", "recruit": "主招", "city": "温州", "owner": "黄章会", "date": "2026/10/19", "status": "进行中", "total": 2, "accounts": { "柴海良": 2, "李余梦": 1 } },
+    { "name": "温州泰昌铁塔", "recruit": "主招", "city": "温州", "owner": "肖汉民", "date": "2026/10/19", "status": "进行中", "total": 1, "accounts": { "李余梦": 2 } },
+    { "name": "温州天超电器", "recruit": "主招", "city": "温州", "owner": "黄晓斌", "date": "2026/10/19", "status": "进行中", "total": 0, "accounts": {} },
+    { "name": "温州美硕电气", "recruit": "主招", "city": "温州", "owner": "肖汉民", "date": "2026/11/5", "status": "进行中", "total": 5, "accounts": { "吕宁": 1, "冯佳豪": 2, "李余梦": 3, "柯汪珽": 3, "金凯健": 3 } },
+    { "name": "温州新亚电子", "recruit": "主招", "city": "温州", "owner": "肖汉民", "date": "2026/11/11", "status": "进行中", "total": null, "accounts": { "冯佳豪": 1, "金凯健": 1 } },
+    { "name": "美康生物科技", "recruit": "主招", "city": "宁波", "owner": "刘洁琼", "date": "2026/10/13", "status": "进行中", "total": 2, "accounts": { "吕宁": 2, "李建江": 2 } },
+    { "name": "AGV工程师", "recruit": "主招", "city": "宁波", "owner": "任启盛", "date": "2026/11/1", "status": "进行中", "total": 1, "accounts": { "徐圣洋": 3, "冯佳豪": 1 } },
+    { "name": "福建骏鹏智能", "recruit": "试招", "city": "福建", "owner": "宋维国", "date": "2026/10/14", "status": "进行中", "total": 1, "accounts": { "柴海良": 3 } },
+    { "name": "宁波博格华纳", "recruit": "辅招", "city": "宁波", "owner": "王露", "date": "2026/11/2", "status": "进行中", "total": 2, "accounts": { "吕宁": 1, "李建江": 1 } },
+    { "name": "宁波三峰机械", "recruit": "辅招", "city": "宁波", "owner": "应岳峰", "date": "2026/11/4", "status": "进行中", "total": 2, "accounts": { "李建江": 1, "柯汪珽": 1 } },
+    { "name": "宁波慈兴集团", "recruit": "辅招", "city": "宁波", "owner": "应岳峰", "date": "2026/11/4", "status": "进行中", "total": 1, "accounts": { "柴海良": 1 } },
+    { "name": "宁波东睦新材料", "recruit": "辅招", "city": "宁波", "owner": "王露", "date": "2026/10/30", "status": "进行中", "total": 0, "accounts": {} },
+    { "name": "嘉兴宜兴环球微晶", "recruit": "主招", "city": "嘉兴", "owner": "杜亦颖", "date": "2026/11/5", "status": "暂停", "total": 0, "accounts": {} },
+    { "name": "宁波秋水外包", "recruit": "主招", "city": "宁波", "owner": "张可豪", "date": "2026/10/8", "status": "暂停", "total": 1, "accounts": { "吕宁": 1 } },
+    { "name": "宁波镇海达尔", "recruit": "辅招", "city": "宁波", "owner": "应旭峰", "date": "2026/10/8", "status": "暂停", "total": 0, "accounts": {} },
+    { "name": "嘉兴轩孚外包", "recruit": "主招", "city": "嘉兴", "owner": "邹啸宇", "date": "2026/10/20", "status": "暂停", "total": 0, "accounts": {} }
+  ]
+}
